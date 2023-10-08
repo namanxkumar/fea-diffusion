@@ -1,3 +1,9 @@
 /.opt
 /__pycache__
 data/
+linear_elasticity.vtk
+part.geo_unrolled
+part.mesh
+regions.vtk
+domain.vtk
+image.png

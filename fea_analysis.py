@@ -57,8 +57,8 @@ def calculate_displacement(filename, force_vertices_tags, constraints_vertices_t
     u = FieldVariable('u', 'unknown', field)
     v = FieldVariable('v', 'test', field, primary_var_name='u')
 
-    # m = Material('m', D=stiffness_from_lame(dim=2, lam=1.0, mu=1.0))
-    m = Material('m', D=stiffness_from_youngpoisson(dim = 2, young=207, poisson=0.3))
+    m = Material('m', D=stiffness_from_lame(dim=2, lam=1.0, mu=1.0))
+    # m = Material('m', D=stiffness_from_youngpoisson(dim = 2, young=207, poisson=0.3))
     f = Material('f', values={".val": [-float(force[0]), -float(force[1])]})
 
     integral = Integral('i', order=2)

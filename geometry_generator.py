@@ -66,14 +66,13 @@ class GeometryGenerator():
 
     def generate_geometry(self):
         geometry = self.random_multi_polygon()
-        geometry : shapely.geometry.Polygon = shapely.geometry.Polygon(unary_union(geometry))
+        geometry : shapely.geometry.Polygon = unary_union(geometry)
         geometry = self.random_polygon(exterior_polygon=geometry)
         return geometry
     
     @staticmethod
     def create_box():
-        geometry = shapely.geometry.Polygon = shapely.geometry.Polygon([(0, 0), (1, 0), (1, 1), (0, 1)])
-        return geometry
+        return shapely.geometry.Polygon(((0, 0), (1, 0), (1, 1), (0, 1)))
 
     @staticmethod
     def normalize_geometry(geometry):
@@ -92,7 +91,7 @@ class GeometryGenerator():
         plot_polygon(geometry, ax, facecolor=(0.9, 0.9, 0.9), edgecolor=(0, 0, 0))
         plt.show()
 
-    def generate_mesh(self, geometry, name, num_conditions_sets = 4, mesh_size = 0.1, view_mesh = False):
+    def generate_mesh(self, geometry, name, num_conditions_sets = 4, mesh_size = 0.1, view_mesh = False, filetype = 'mesh'):
         gmsh.initialize() # Initialize the Gmsh API
 
         # Get the coordinates of the external and internal polygons
@@ -168,7 +167,7 @@ class GeometryGenerator():
 
         gmsh.write("{}.geo_unrolled".format(name)) # Write the geometry to a file
         
-        gmsh.write("{}.mesh".format(name)) # Write the mesh to a file
+        gmsh.write("{}.{}".format(name, filetype)) # Write the mesh to a file
         # gmsh.write("{}.msh".format(name)) # Write the mesh to a file
         
         if view_mesh:
