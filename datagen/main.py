@@ -1,4 +1,4 @@
-from geometry_generator import GeometryGenerator
+from datagen.mesh_generator import MeshGenerator
 from fea_analysis import calculate_displacement
 from typing import Dict
 import os
@@ -8,13 +8,13 @@ import math
 random_generator = random.Random()
 init_plate_index = 112
 num_plates = 1000
-data_dir = "data2/"
+data_dir = "data/"
 mesh_size = 1e-2
 initial_image_size = math.ceil(512/0.685546875)
-# common_config = "-2 --color-map binary --no-scalar-bars --no-axes --window-size {},{} --off-screen".format(initial_image_size, initial_image_size)
-common_config = "-2 --no-axes --window-size {},{} --off-screen".format(initial_image_size, initial_image_size)
+common_config = "-2 --color-map binary --no-scalar-bars --no-axes --window-size {},{} --off-screen".format(initial_image_size, initial_image_size)
+# common_config = "-2 --no-axes --window-size {},{} --off-screen".format(initial_image_size, initial_image_size)
 
-generator = GeometryGenerator(num_polygons_range=(1, 3), points_per_polygon_range=(3, 8), holes_per_polygon_range=(0, 3), points_per_hole_range=(3, 4))
+generator = MeshGenerator(num_polygons_range=(1, 3), points_per_polygon_range=(3, 8), holes_per_polygon_range=(0, 3), points_per_hole_range=(3, 4))
 forces = [(10000.0, 0.0), (0.0, 10000.0), (10000.0, 10000.0), (10000.0, -10000.0), (-10000.0, 10000.0), (-10000.0, -10000.0), (-10000.0, 0.0), (0.0, -10000.0)]
 
 plate_index = 0 + init_plate_index
@@ -30,7 +30,10 @@ while plate_index < num_plates:
     
     geometry = generator.normalize_geometry(geometry)
     
-    conditions = generator.generate_mesh(geometry, "part", mesh_size=mesh_size, view_mesh = False)
+    polygons_ptags, polygons_ltag_ptags = generator.generate_mesh(geometry, "part", mesh_size=mesh_size, view_mesh = False)
+
+    conditions = generator.sample_conditions(geometry, polygons_ptags, polygons_ltag_ptags, num_conditions=4)
+
     print("NUM_CONDITIONS:", len(conditions))
     
     for condition_index in range(len(conditions)):

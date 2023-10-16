@@ -1,9 +1,9 @@
-from geometry_generator import GeometryGenerator
+from datagen.mesh_generator import MeshGenerator
 import os
 from PIL import Image
 
 def create_box_mesh(mesh_size):
-    box_generator = GeometryGenerator(num_polygons_range=(1, 3), points_per_polygon_range=(3, 8), holes_per_polygon_range=(0, 3), points_per_hole_range=(3, 4))
+    box_generator = MeshGenerator(num_polygons_range=(1, 3), points_per_polygon_range=(3, 8), holes_per_polygon_range=(0, 3), points_per_hole_range=(3, 4))
     box = box_generator.create_box()
     box_generator.generate_mesh(box, "box", mesh_size=mesh_size, view_mesh = False)
 

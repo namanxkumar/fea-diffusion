@@ -9,6 +9,17 @@ from sfepy.solvers.nls import Newton
 
 import numpy as np
 
+class FEAnalysis:
+    def __init__(self, filename, force_ptags, force_ltags, constraints_ptags, constraints_ltags, force_magnitudes):
+        self.mesh = Mesh.from_file(filename)
+        self.domain = FEDomain('domain', self.mesh)
+
+        self.force_points = force_ptags
+        self.force_edges = force_ltags
+        self.force_magnitudes = force_magnitudes
+        self.constraints_points = constraints_ptags
+        self.constraints_edges = constraints_ltags
+
 def calculate_displacement(filename, force_vertices_tags, constraints_vertices_tags, force):
     mesh = Mesh.from_file(filename)
     domain = FEDomain('domain', mesh)
@@ -20,23 +31,6 @@ def calculate_displacement(filename, force_vertices_tags, constraints_vertices_t
             force_vertices_string += ", "
 
     forces = domain.create_region('Forces', force_vertices_string, 'vertex')
-
-    # constraints_vertices_string = ""
-
-    # if(len(constraints_vertices_tags) == 0):
-    #     pass
-    # elif(len(constraints_vertices_tags) == 1):
-    #     constraints_vertices_string = "vertex {}, {}".format(constraints_vertices_tags[0][0], constraints_vertices_tags[0][1])
-    #     print(constraints_vertices_string)
-    #     constraints = domain.create_region('Constraints', constraints_vertices_string, 'vertex')
-    # else:
-    #     constraints_vertices_string += "vertex "
-    #     for index in range(len(constraints_vertices_tags)):
-    #         constraints_vertices_string += "{}, {}".format(constraints_vertices_tags[index][0], constraints_vertices_tags[index][1])
-    #         if index != len(constraints_vertices_tags) - 1:
-    #             constraints_vertices_string += ","
-    #     print(constraints_vertices_string)
-    #     constraints = domain.create_region('Constraints', constraints_vertices_string, 'vertex')
     
     constraints = []
 
@@ -46,6 +40,7 @@ def calculate_displacement(filename, force_vertices_tags, constraints_vertices_t
         x1, y1 = coord1[0] - coord0[0], coord1[1] - coord0[1]
         x2, y2 = coords[:, 0] - coord0[0], coords[:, 1] - coord0[1]
         return np.where(np.abs(x1 * y2 - x2 * y1) < 1e-14)[0]
+    
     for tags in constraints_vertices_tags:
         constraints.append(domain.create_region('Constraints', "vertices by get_edge", 'facet', functions={'get_edge' : Function('get_edge', get_edge, extra_args={'tags': tags})}, allow_empty=True))
 
@@ -72,14 +67,6 @@ def calculate_displacement(filename, force_vertices_tags, constraints_vertices_t
     eq = Equation('balance', t1 + t2)
     eqs = Equations([eq])
     fix_u_list = [EssentialBC('fix_u', constraint, {'u.all' : 0.0}) for constraint in constraints]
-    # shift_u = EssentialBC('shift_u', gamma2, {'u.0' : bc_fun})
-    # fix_u = EssentialBC('fix_u', constraints, {'u.all' : 0.0})
-    # def shift_u_fun(ts, coors, bc=None, problem=None, shift=0.0):
-    #                 val = shift
-    #                 return val
-    # bc_fun = Function('shift_u_fun', shift_u_fun,
-    #                 extra_args={'shift' : 0.01})
-    # shift_u = EssentialBC('shift_u', forces, {'u.0' : bc_fun})
     
     ls = ScipyDirect({})
     nls_status = IndexedStruct()
