@@ -8,10 +8,11 @@ import math
 random_generator = random.Random()
 init_plate_index = 112
 num_plates = 1000
-data_dir = "data/"
+data_dir = "data2/"
 mesh_size = 1e-2
 initial_image_size = math.ceil(512/0.685546875)
-common_config = "-2 --color-map binary --no-scalar-bars --no-axes --window-size {},{} --off-screen".format(initial_image_size, initial_image_size)
+# common_config = "-2 --color-map binary --no-scalar-bars --no-axes --window-size {},{} --off-screen".format(initial_image_size, initial_image_size)
+common_config = "-2 --no-axes --window-size {},{} --off-screen".format(initial_image_size, initial_image_size)
 
 generator = GeometryGenerator(num_polygons_range=(1, 3), points_per_polygon_range=(3, 8), holes_per_polygon_range=(0, 3), points_per_hole_range=(3, 4))
 forces = [(10000.0, 0.0), (0.0, 10000.0), (10000.0, 10000.0), (10000.0, -10000.0), (-10000.0, 10000.0), (-10000.0, -10000.0), (-10000.0, 0.0), (0.0, -10000.0)]
@@ -37,7 +38,7 @@ while plate_index < num_plates:
         
         force = random_generator.choice(forces)
         
-        calculate_displacement("part.mesh", conditions[condition_index]['forces'], conditions[condition_index]['constraints'], force)
+        calculate_displacement("part.mesh", conditions[condition_index]['forces'], conditions[condition_index]['constraints'], (1000.0, 0.0))
         
         if condition_index == 0:
             filename = "{}_plate.png".format(plate_index)
