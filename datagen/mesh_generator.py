@@ -8,6 +8,7 @@ import gmsh
 import sys
 from collections import OrderedDict
 from typing import List, Tuple, OrderedDict, Dict
+from copy import deepcopy
 
 class MeshGenerator():
     def __init__(self, num_polygons_range, points_per_polygon_range, holes_per_polygon_range, points_per_hole_range, random_seed = None):
@@ -168,42 +169,69 @@ class MeshGenerator():
 
         return polygons_ptags, polygons_ltag_ptags
     
-    def sample_conditions(self, polygons_ptags: List[List[int]], polygons_ltag_ptags: List[OrderedDict[int, Tuple[int, int]]], num_conditions: int = 4, allow_coincident_force_constraints: bool = False) -> List[Dict[str, List[int]]]:
+    def sample_conditions(self, polygons_ptags: List[List[int]], polygons_ltag_ptags: List[OrderedDict[int, Tuple[int, int]]], num_conditions: int = 4) -> List[Dict]:
         conditions = []
         
         combined_polygons_ptags = [ptag for ptags in polygons_ptags for ptag in ptags]
         combined_edges_ptags = [ptags for polygon_ltag_ptags in polygons_ltag_ptags for ptags in polygon_ltag_ptags.values()]
         
         while(len(conditions) < num_conditions):
-            self.random.shuffle(combined_polygons_ptags)
-            self.random.shuffle(combined_edges_ptags)
+            i_combined_polygons_ptags = deepcopy(combined_polygons_ptags)
+            i_combined_edges_ptags = deepcopy(combined_edges_ptags)
+            # 1. Choose a random number of constraints between 1 and the number of edges/vertices - 1, N (since num of edges == num of vertices)
+            # 2. Sample N number of edges without replacement
 
-            num_point_forces = 1
-            # num_edge_forces = 0
-            sample_point_forces = combined_polygons_ptags[-num_point_forces:]
-            # sample_edge_forces = combined_edges_ptags[-num_edge_forces:]
+            sampled_edges = self.random.sample(i_combined_edges_ptags, self.random.randint(1, len(i_combined_edges_ptags)-1))
 
-            # this is not really working since the points sampled are not compared to the edges sampled at all, and so there is a chance that the points sampled are on the edges sampled
-            # if not allow_coincident_force_constraints:
-            #     del combined_polygons_ptags[-num_point_forces:]
-            #     del combined_edges_ptags[-num_edge_forces:]
-            # else:
-            #     self.random.shuffle(combined_polygons_ptags)
-            #     self.random.shuffle(combined_edges_ptags)
+            # 3. Create a list of all vertices that are on the sampled edges
+            vertices_on_sampled_edges = set()
+            for edge in sampled_edges:
+                vertices_on_sampled_edges.add(edge[0])
+                vertices_on_sampled_edges.add(edge[1])
+
+            # 4. Sample a random number of edges from the list of sampled edges to actually constrain
+            edges_to_constrain = self.random.sample(sampled_edges, self.random.randint(1, len(sampled_edges)))
+
+            # 5. Delete the vertices that are on the edges that are sampled to constrain from the list of vertices constituting sampled edges
+            # 6. Choose the remaining vertices constituting sampled edges as constraints
+            vertices_to_constrain = deepcopy(vertices_on_sampled_edges)
+            for edge in edges_to_constrain:
+                if edge[0] in vertices_to_constrain:
+                    vertices_to_constrain.remove(edge[0])
+                if edge[1] in vertices_to_constrain:
+                    vertices_to_constrain.remove(edge[1])
+
+            # 7. Delete the sampled edges to constrain from the original list of edges, and the vertices constituting sampled edges from the original list of vertices
+            for edge in edges_to_constrain:
+                i_combined_edges_ptags.remove(edge)
+
+            for vertex in vertices_on_sampled_edges:
+                i_combined_polygons_ptags.remove(vertex)
+
             
-            # num_point_constraints = self.random.randint(0, len(combined_polygons_ptags))
-            # num_point_constraints = 0
-            num_edge_constraints = self.random.randint(0, len(combined_edges_ptags)-1)
+            # 8. Sample a random number of vertices from the list of vertices as forces
+            try:
+                point_forces = self.random.sample(i_combined_polygons_ptags, self.random.randint(1, len(i_combined_polygons_ptags)))
+            except:
+                point_forces = []
             
-            # sample_point_constraints = combined_polygons_ptags[-num_point_constraints:]
-            sample_edge_constraints = combined_edges_ptags[-num_edge_constraints:]
+            # 9. Sample a random number of edges from the list of edges as forces
+            edge_forces = self.random.sample(i_combined_edges_ptags, self.random.randint(0 if len(point_forces) >= 1 else 1, len(i_combined_edges_ptags)))
 
-            conditions_dict = {
-                "forces": sample_point_forces,
-                "constraints": sample_edge_constraints
+            condition = {
+                'point_constraints': list(vertices_to_constrain),
+                'edge_constraints': list(edges_to_constrain),
+                'point_forces': list(point_forces),
+                'edge_forces': list(edge_forces)
             }
 
-            if conditions_dict not in conditions:
-                conditions.append(conditions_dict)
+            if condition not in conditions:
+                conditions.append(condition)
+
+        # Sample magnitudes for forces between 500N and 5000N
+        sign = [-1, 1]
+        for condition in conditions:
+            condition['point_forces'] = [(point_force, (self.random.randint(500, 10000)*self.random.choice(sign), self.random.randint(500, 5000)*self.random.choice(sign))) for point_force in condition['point_forces']]
+            condition['edge_forces'] = [(edge_force, (self.random.randint(500, 10000)*self.random.choice(sign), self.random.randint(500, 5000)*self.random.choice(sign))) for edge_force in condition['edge_forces']]
 
         return conditions

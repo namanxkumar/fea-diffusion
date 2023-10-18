@@ -2,14 +2,18 @@ from datagen.mesh_generator import MeshGenerator
 import os
 from PIL import Image
 
+def verify_directory(directory):
+    if not os.path.exists(directory):
+        os.makedirs(directory)
+
 def create_box_mesh(mesh_size):
     box_generator = MeshGenerator(num_polygons_range=(1, 3), points_per_polygon_range=(3, 8), holes_per_polygon_range=(0, 3), points_per_hole_range=(3, 4))
     box = box_generator.create_box()
     box_generator.generate_mesh(box, "box", mesh_size=mesh_size, view_mesh = False)
 
-def find_image_bounds(image_path, image_size):
-    common_config = "-2 --color-map binary --no-scalar-bars --no-axes --window-size {},{} --off-screen".format(image_size, image_size)
-    os.system("sfepy-view box.mesh -f 1:vs {} --outline -o {}".format(common_config, image_path))
+def find_image_bounds(image_path):
+    # common_config = "-2 --color-map binary --no-scalar-bars --no-axes --window-size {},{} --off-screen".format(image_size, image_size)
+    # os.system("sfepy-view box.mesh -f 1:vs {} --outline -o {}".format(common_config, image_path))
     image = Image.open(image_path)
     # find the bounding box of the geometry by finding the first non-white pixel
     image_data = image.load()
