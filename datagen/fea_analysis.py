@@ -10,6 +10,8 @@ from sfepy.solvers.nls import Newton
 from sfepy.solvers.ts_solvers import SimpleTimeSteppingSolver
 from sfepy.base.base import Struct, output
 
+from .custom_plotter import plot
+
 import numpy as np
 from typing import Tuple, List
 from os import path, system
@@ -22,6 +24,7 @@ class FEAnalysis:
         self.region_filename = "regions"
         self.solution_filename = "solution.vtk"
         self.initial_image_size = math.ceil(512/0.685546875)
+        self.image_size = self.initial_image_size
         self.bounds = (0, 0, self.initial_image_size, self.initial_image_size)
         self.common_config = "-2 --color-map binary --no-scalar-bars --no-axes --window-size {},{} --off-screen".format(self.initial_image_size, self.initial_image_size)
         
@@ -171,10 +174,12 @@ class FEAnalysis:
         stress = problem.evaluate('ev_cauchy_stress.2.Omega(m.D, u)', mode='el_avg',
                     copy_materials=False)
         # print(problem.equations.variables['u'].data)
+        # print(np.array(strain[1].create_output()['cauchy_strain'].data), np.array(stress).shape)
         output['cauchy_strain'] = Struct(name='output_data', mode='cell',
                                     data=strain, dofs=None)
         output['cauchy_stress'] = Struct(name='output_data', mode='cell',
                                     data=stress, dofs=None)
+        # print(np.array(output['cauchy_strain'].data).shape, np.array(output['cauchy_stress'].data).shape)
 
         return output
 
@@ -191,45 +196,53 @@ class FEAnalysis:
 
         self._save_regions(problem)
 
-        problem.solve(save_results=True, post_process_hook=self.calculate_stress_strain)
+        # problem.output_dir = "data/"
+        variables : Variables = problem.solve(save_results=True, post_process_hook=self.calculate_stress_strain)
+        # print(np.array(variables.create_output()['u'].data).shape)
+        # print(variables.get_state_parts())
 
     def update_image_size_or_bounds(self, image_size = None, bounds = None):
         if image_size is not None:
+            self.image_size = image_size
             self.common_config = "-2 --color-map binary --no-scalar-bars --no-axes --window-size {},{} --off-screen".format(image_size, image_size)
         if bounds is not None:
             self.bounds = bounds
 
-    def save_input_image(self, filepath, input_filepath = "domain.??.vtk", outline = False, crop = True):
+    def save_input_image(self, filepath, input_filepath = "domain.00.vtk", outline = False, crop = True):
         if outline:
-            system("sfepy-view {} -s 0 -f 1:vs {} --outline -o {}".format(input_filepath, self.common_config, filepath))
+            plot(filenames=[input_filepath], fields=[("1", "vs")], window_size=(self.image_size, self.image_size), outline=True, screenshot=filepath)
+            # system("sfepy-view {} -s 0 -f 1:vs {} --outline -o {}".format(input_filepath, self.common_config, filepath))
         else:
-            system("sfepy-view {} -s 0 -f 1:vs {} -o {}".format(input_filepath, self.common_config, filepath))
+            plot(filenames=[input_filepath], fields=[("1", "vs")], window_size=(self.image_size, self.image_size), screenshot=filepath)
+            # system("sfepy-view {} -s 0 -f 1:vs {} -o {}".format(input_filepath, self.common_config, filepath))
 
         if crop:
             self.crop_image(filepath, self.bounds)
 
     def save_region_images(self, filepathroot, crop = True):
         for config in self.force_region_name_list + self.constraint_region_name_list:
-            filename = "{}_{}.png".format(filepathroot, config)
-            system("sfepy-view {}.vtk -f {}:vs {} -o {}".format(self.region_filename, config, self.common_config, filename))
+            filepath = "{}_{}.png".format(filepathroot, config)
+            print(config)
+            system("sfepy-view {}.vtk -f {}:vs {} -o {}".format(self.region_filename, config, self.common_config, filepath))
+            # plot(filenames=["{}.vtk".format(self.region_filename)], fields=[(config, "vs")], window_size=(self.image_size, self.image_size), screenshot=filepath)
             
             if crop:
-                self.crop_image(filename, self.bounds)
+                self.crop_image(filepath, self.bounds)
 
     def save_output_images(self, filepathroot, save_displacement = True, save_stress = True, save_strain = True, crop = True):
         displacement_config = {
-            'displacement_x': "u:c0:wu",
-            'displacement_y': "u:c1:wu",
+            'displacement_x': [("u", "c0:wu")],
+            'displacement_y': [("u", "c1:wu")],
         }
 
         stress_config = {
-            'stress_x': 'cauchy_stress:c0',
-            'stress_y': 'cauchy_stress:c1',
+            'stress_x': [('cauchy_stress', 'c0')],
+            'stress_y': [('cauchy_stress','c1')],
         }
 
         strain_config = {
-            'strain_x': 'cauchy_strain:c0',
-            'strain_y': 'cauchy_strain:c1',
+            'strain_x': [('cauchy_strain', 'c0')],
+            'strain_y': [('cauchy_strain', 'c1')],
         }
 
         output_file_config = {}
@@ -245,8 +258,10 @@ class FEAnalysis:
 
         for step in range(self.num_steps):
             for type, config in output_file_config.items():
-                filename = "{}_{}_{}.png".format(filepathroot, type, step)
-                system("sfepy-view domain.??.vtk -f {} -s {} {} -o {}".format(config, step, self.common_config, filename))
+                filepath = "{}_{}_{}.png".format(filepathroot, type, step)
+                # system("sfepy-view domain.??.vtk -f {} -s {} {} -o {}".format(config, step, self.common_config, filename))
+                plot(filenames=["domain.{:0>2}.vtk".format(s) for s in range(self.num_steps)], fields=config, step=step, window_size=(self.image_size, self.image_size), screenshot=filepath)
+
 
                 if crop:
-                    self.crop_image(filename, self.bounds)
+                    self.crop_image(filepath, self.bounds)

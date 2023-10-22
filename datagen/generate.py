@@ -5,7 +5,7 @@ from typing import Dict
 import os
 from tqdm import tqdm
 
-def generate_data(data_dir = "data/", image_size = 512, num_plates = 1, conditions_per_plate = 4, mesh_size = 1e-2, num_polygons_range=(1, 3), points_per_polygon_range=(3, 8), holes_per_polygon_range=(0, 3), points_per_hole_range=(3, 4), save_displacement=False, save_strain=False, save_stress=True):
+def generate_data(data_dir = "data/", image_size = 512, num_plates = 1, conditions_per_plate = 4, mesh_size = 1e-2, num_polygons_range=(1, 3), points_per_polygon_range=(3, 8), holes_per_polygon_range=(0, 3), points_per_hole_range=(3, 4), save_displacement=True, save_strain=False, save_stress=False):
     verify_directory(data_dir)
 
     generator = MeshGenerator(num_polygons_range=num_polygons_range, points_per_polygon_range=points_per_polygon_range, holes_per_polygon_range=holes_per_polygon_range, points_per_hole_range=points_per_hole_range)

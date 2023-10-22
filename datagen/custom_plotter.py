@@ -79,100 +79,100 @@ helps = {
         '2d view of XY plane',
 }
 
-def main():
+def plot(filenames, fields = [], fields_map = [], step = 0, outline = False, isosurfaces = 0, show_edges = False, warp = None, factor = 1., opacity = 1., color_map = 'binary', axes_options = [], axes_visibility = False, grid_vector1 = None, grid_vector2 = None, max_plots = 4, show_labels = True, label_position = [-1, -1, 0, 0.2], show_scalar_bars = False, scalar_bar_size = [0.15, 0.05], scalar_bar_position = [0.8, 0.02, 0, 1.5], camera = None, camera_position = None, window_size = pv.global_theme.window_size, anim_output_file = None, framerate = 2.5, screenshot = None, off_screen = True, view_2d = True):
     parser = ArgumentParser(description=__doc__,
                             formatter_class=RawDescriptionHelpFormatter)
     parser.add_argument('-f', '--fields', metavar='field_spec',
                         action=FieldOptsToListAction, nargs="+", dest='fields',
-                        default=[], help=helps['fields'])
+                        default=fields, help=helps['fields'])
     parser.add_argument('--fields-map', metavar='map',
                         action=FieldOptsToListAction, nargs="+",
                         dest='fields_map',
-                        default=[], help=helps['fields_map'])
+                        default=fields_map, help=helps['fields_map'])
     parser.add_argument('-s', '--step', metavar='step',
                         action=StoreNumberAction, dest='step',
-                        default=0, help=helps['step'])
+                        default=step, help=helps['step'])
     parser.add_argument('-l', '--outline',
                         action='store_true', dest='outline',
-                        default=False, help=helps['outline'])
+                        default=outline, help=helps['outline'])
     parser.add_argument('-i', '--isosurfaces',
                         action='store', dest='isosurfaces',
-                        default=0, help=helps['isosurfaces'])
+                        default=isosurfaces, help=helps['isosurfaces'])
     parser.add_argument('-e', '--edges',
                         action='store_true', dest='show_edges',
-                        default=False, help=helps['edges'])
+                        default=show_edges, help=helps['edges'])
     parser.add_argument('-w', '--warp', metavar='field',
                         action='store', dest='warp',
-                        default=None, help=helps['warp'])
+                        default=warp, help=helps['warp'])
     parser.add_argument('--factor', metavar='factor',
                         action=StoreNumberAction, dest='factor',
-                        default=1., help=helps['factor'])
+                        default=factor, help=helps['factor'])
     parser.add_argument('--opacity', metavar='opacity',
                         action=StoreNumberAction, dest='opacity',
-                        default=1., help=helps['opacity'])
+                        default=opacity, help=helps['opacity'])
     parser.add_argument('--color-map', metavar='cmap',
                         action='store', dest='color_map',
-                        default='viridis', help=helps['color_map'])
+                        default=color_map, help=helps['color_map'])
     parser.add_argument('--axes-options', metavar='options',
                         action=OptsToListAction, nargs="+",
                         dest='axes_options',
-                        default=[], help=helps['axes_options'])
+                        default=axes_options, help=helps['axes_options'])
     parser.add_argument('--no-axes',
                         action='store_false', dest='axes_visibility',
-                        default=True, help=helps['no_axes'])
+                        default=axes_visibility, help=helps['no_axes'])
     parser.add_argument('--grid-vector1', metavar='grid_vector1',
                         action=StoreNumberAction, dest='grid_vector1',
-                        default=None, help=helps['grid_vector1'])
+                        default=grid_vector1, help=helps['grid_vector1'])
     parser.add_argument('--grid-vector2', metavar='grid_vector2',
                         action=StoreNumberAction, dest='grid_vector2',
-                        default=None, help=helps['grid_vector2'])
+                        default=grid_vector2, help=helps['grid_vector2'])
     parser.add_argument('--max-plots',
                         action=StoreNumberAction, dest='max_plots',
-                        default=4, help=helps['max_plots'])
+                        default=max_plots, help=helps['max_plots'])
     parser.add_argument('--no-labels',
                         action='store_false', dest='show_labels',
-                        default=True, help=helps['no_labels'])
+                        default=show_labels, help=helps['no_labels'])
     parser.add_argument('--label-position', metavar='position',
                         action=StoreNumberAction, dest='label_position',
-                        default=[-1, -1, 0, 0.2], help=helps['label_position'])
+                        default=label_position, help=helps['label_position'])
     parser.add_argument('--no-scalar-bars',
                         action='store_false', dest='show_scalar_bars',
-                        default=True, help=helps['no_scalar_bars'])
+                        default=show_scalar_bars, help=helps['no_scalar_bars'])
     parser.add_argument('--scalar-bar-size', metavar='size',
                         action=StoreNumberAction, dest='scalar_bar_size',
-                        default=[0.15, 0.05],
+                        default=scalar_bar_size,
                         help=helps['scalar_bar_size'])
     parser.add_argument('--scalar-bar-position', metavar='position',
                         action=StoreNumberAction, dest='scalar_bar_position',
-                        default=[0.8, 0.02, 0, 1.5],
+                        default=scalar_bar_position,
                         help=helps['scalar_bar_position'])
     parser.add_argument('-v', '--view', metavar='position',
                         action=StoreNumberAction, dest='camera',
-                        default=None, help=helps['view'])
+                        default=camera, help=helps['view'])
     parser.add_argument('--camera-position', metavar='camera_position',
                         action=StoreNumberAction, dest='camera_position',
-                        default=None, help=helps['camera_position'])
+                        default=camera_position, help=helps['camera_position'])
     parser.add_argument('--window-size', metavar='window_size',
                         action=StoreNumberAction, dest='window_size',
-                        default=pv.global_theme.window_size,
+                        default=window_size,
                         help=helps['window_size'])
     parser.add_argument('-a', '--animation', metavar='output_file',
                         action='store', dest='anim_output_file',
-                        default=None, help=helps['animation'])
+                        default=anim_output_file, help=helps['animation'])
     parser.add_argument('-r', '--frame-rate', metavar='rate',
                         action=StoreNumberAction, dest='framerate',
-                        default=2.5, help=helps['framerate'])
+                        default=framerate, help=helps['framerate'])
     parser.add_argument('-o', '--screenshot', metavar='output_file',
                         action='store', dest='screenshot',
-                        default=None, help=helps['screenshot'])
+                        default=screenshot, help=helps['screenshot'])
     parser.add_argument('--off-screen',
                         action='store_true', dest='off_screen',
-                        default=False, help=helps['off_screen'])
+                        default=off_screen, help=helps['off_screen'])
     parser.add_argument('-2', '--2d-view',
                         action='store_true', dest='view_2d',
-                        default=False, help=helps['2d_view'])
+                        default=view_2d, help=helps['2d_view'])
 
-    parser.add_argument('filenames', nargs='+')
+    parser.add_argument('--filenames', nargs='+', dest='filenames', action='store', default=filenames)
     options = parser.parse_args()
 
     pv.set_plot_theme("document")
