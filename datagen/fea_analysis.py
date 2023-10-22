@@ -10,15 +10,14 @@ from sfepy.solvers.nls import Newton
 from sfepy.solvers.ts_solvers import SimpleTimeSteppingSolver
 from sfepy.base.base import Struct, output
 
-from .utils import crop_image
-
 import numpy as np
 from typing import Tuple, List
 from os import path, system
 import math
+from PIL import Image
 
 class FEAnalysis:
-    def __init__(self, filename: str, force_vertex_tags_magnitudes: List[Tuple[int, Tuple[float, float]]], force_edges_tags_magnitudes: List[Tuple[Tuple[int, int], Tuple[int, int]]], constraints_vertex_tags: List[int], constraints_edges_tags: List[Tuple[int, int]], youngs_modulus: float, poisson_ratio: float):
+    def __init__(self, filename: str, force_vertex_tags_magnitudes: List[Tuple[int, Tuple[float, float]]], force_edges_tags_magnitudes: List[Tuple[Tuple[int, int], Tuple[int, int]]], constraints_vertex_tags: List[int], constraints_edges_tags: List[Tuple[int, int]], youngs_modulus: float = 210000, poisson_ratio: float = 0.3):
         # self.directory = directory
         self.region_filename = "regions"
         self.solution_filename = "solution.vtk"
@@ -80,6 +79,12 @@ class FEAnalysis:
         self.nls_solver = self._create_nls_solver()
         self.num_steps = 11
     
+    @staticmethod
+    def crop_image(image_path, bounds):
+        image = Image.open(image_path)
+        image = image.crop(bounds)
+        image.save(image_path)
+
     @staticmethod
     def _get_points_on_edge(coords, bounding_tags, **kwargs):
         coord0 = coords[bounding_tags[0] - 1]
@@ -194,14 +199,14 @@ class FEAnalysis:
         if bounds is not None:
             self.bounds = bounds
 
-    def save_input_image(self, filepath, outline = False, crop = True):
+    def save_input_image(self, filepath, input_filepath = "domain.??.vtk", outline = False, crop = True):
         if outline:
-            system("sfepy-view domain.??.vtk -s 0 -f 1:vs {} --outline -o {}".format(self.common_config, filepath))
+            system("sfepy-view {} -s 0 -f 1:vs {} --outline -o {}".format(input_filepath, self.common_config, filepath))
         else:
-            system("sfepy-view domain.??.vtk -s 0 -f 1:vs {} -o {}".format(self.common_config, filepath))
+            system("sfepy-view {} -s 0 -f 1:vs {} -o {}".format(input_filepath, self.common_config, filepath))
 
         if crop:
-            crop_image(filepath, self.bounds)
+            self.crop_image(filepath, self.bounds)
 
     def save_region_images(self, filepathroot, crop = True):
         for config in self.force_region_name_list + self.constraint_region_name_list:
@@ -209,7 +214,7 @@ class FEAnalysis:
             system("sfepy-view {}.vtk -f {}:vs {} -o {}".format(self.region_filename, config, self.common_config, filename))
             
             if crop:
-                crop_image(filename, self.bounds)
+                self.crop_image(filename, self.bounds)
 
     def save_output_images(self, filepathroot, save_displacement = True, save_stress = True, save_strain = True, crop = True):
         displacement_config = {
@@ -244,4 +249,4 @@ class FEAnalysis:
                 system("sfepy-view domain.??.vtk -f {} -s {} {} -o {}".format(config, step, self.common_config, filename))
 
                 if crop:
-                    crop_image(filename, self.bounds)
+                    self.crop_image(filename, self.bounds)

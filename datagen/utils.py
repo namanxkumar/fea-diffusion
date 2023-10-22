@@ -1,4 +1,5 @@
-from datagen.mesh_generator import MeshGenerator
+from .mesh_generator import MeshGenerator
+from .fea_analysis import FEAnalysis
 import os
 from PIL import Image
 
@@ -7,7 +8,7 @@ def verify_directory(directory):
         os.makedirs(directory)
 
 def create_box_mesh(mesh_size):
-    box_generator = MeshGenerator(num_polygons_range=(1, 3), points_per_polygon_range=(3, 8), holes_per_polygon_range=(0, 3), points_per_hole_range=(3, 4))
+    box_generator = MeshGenerator()
     box = box_generator.create_box()
     box_generator.generate_mesh(box, "box", mesh_size=mesh_size, view_mesh = False)
 
@@ -51,7 +52,18 @@ def find_image_bounds(image_path):
             break
     return left, top, right, bottom
 
-def crop_image(image_path, bounds):
-    image = Image.open(image_path)
-    image = image.crop(bounds)
-    image.save(image_path)
+def find_box_bounds(required_image_size):
+    analyzer = FEAnalysis('box.mesh', [], [], [], [])
+    
+    analyzer.save_input_image("box.png", input_filepath="box.mesh", outline=True, crop=False)
+    left, top, right, bottom = find_image_bounds("box.png")
+    max_size = max(right - left, bottom - top)
+    modified_image_size = int(required_image_size / (max_size / analyzer.initial_image_size))
+    analyzer.update_image_size_or_bounds(image_size=modified_image_size)
+    
+    analyzer.save_input_image("box.png", input_filepath="box.mesh", outline=True, crop=False)
+    left, top, right, bottom = find_image_bounds("box.png")
+    lbound, ubound = (left, right) if right > bottom else (top, bottom)
+    bounds = (lbound, lbound, ubound, ubound)
+    
+    return modified_image_size, bounds

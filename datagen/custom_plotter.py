@@ -1,0 +1,210 @@
+from sfepy.scripts.resview import pv_plot, FieldOptsToListAction, StoreNumberAction, OptsToListAction, make_title
+from argparse import ArgumentParser, RawDescriptionHelpFormatter
+import pyvista as pv
+import os
+
+helps = {
+    'fields':
+        'fields to plot, options separated by ":" are possible:\n'
+        '"cX" - plot only Xth field component; '
+        '"e" - print edges; '
+        '"fX" - scale factor for warp/glyphs, see --factor option; '
+        '"g - glyphs (for vector fields only), scale by factor; '
+        '"iX" - plot X isosurfaces; '
+        '"tX" - plot X streamlines, gradient employed for scalar fields; '
+        '"mX" - plot cells with mat_id=X; '
+        '"oX" - set opacity to X; '
+        '"pX" - plot in slot X; '
+        '"r" - recalculate cell data to point data; '
+        '"sX" - plot data in step X; '
+        '"vX" - plotting style: s=surface, w=wireframe, p=points; '
+        '"wX" - warp mesh by vector field X, scale by factor',
+    'fields_map':
+        'map fields and cell groups, e.g. 1:u1,p1 2:u2,p2',
+    'outline':
+        'plot mesh outline',
+    'warp':
+        'warp mesh by vector field',
+    'factor':
+        'scaling factor for mesh warp and glyphs.'
+        ' Append "%%" to scale relatively to the minimum bounding box size.',
+    'edges':
+        'plot cell edges',
+    'isosurfaces':
+        'plot isosurfaces [default: %(default)s]',
+    'opacity':
+        'set opacity [default: %(default)s]',
+    'color_map':
+        'set color_map, e.g. hot, cool, bone, etc. [default: %(default)s]',
+    'axes_options':
+        'options for directional axes, e.g. xlabel="z1" ylabel="z2",'
+        ' zlabel="z3"',
+    'no_axes':
+        'hide orientation axes',
+    'no_scalar_bars':
+        'hide scalar bars',
+    'grid_vector1':
+        'define positions of plots along grid axis 1 [default: "0, 0, 1.6"]',
+    'grid_vector2':
+        'define positions of plots along grid axis 2 [default: "0, 1.6, 0"]',
+    'max_plots':
+        'maximum number of plots along grid axis 1'
+        ' [default: 4]',
+    'view':
+        'camera azimuth, elevation angles, and optionally zoom factor'
+        ' [default: "225,75,0.9"]',
+    'camera_position':
+        'define camera position',
+    'window_size':
+        'define size of plotting window',
+    'animation':
+        'create animation, mp4 file type supported',
+    'framerate':
+        'set framerate for animation',
+    'screenshot':
+        'save screenshot to file',
+    'off_screen':
+        'off screen plots, e.g. when screenshotting',
+    'no_labels':
+        'hide plot labels',
+    'label_position':
+        'define position of plot labels [default: "-1, -1, 0, 0.2"]',
+    'scalar_bar_size':
+        'define size of scalar bars [default: "0.15, 0.05"]',
+    'scalar_bar_position':
+        'define position of scalar bars [default: "0.8, 0.02, 0, 1.5"]',
+    'step':
+        'select data in a given time step',
+    '2d_view':
+        '2d view of XY plane',
+}
+
+def main():
+    parser = ArgumentParser(description=__doc__,
+                            formatter_class=RawDescriptionHelpFormatter)
+    parser.add_argument('-f', '--fields', metavar='field_spec',
+                        action=FieldOptsToListAction, nargs="+", dest='fields',
+                        default=[], help=helps['fields'])
+    parser.add_argument('--fields-map', metavar='map',
+                        action=FieldOptsToListAction, nargs="+",
+                        dest='fields_map',
+                        default=[], help=helps['fields_map'])
+    parser.add_argument('-s', '--step', metavar='step',
+                        action=StoreNumberAction, dest='step',
+                        default=0, help=helps['step'])
+    parser.add_argument('-l', '--outline',
+                        action='store_true', dest='outline',
+                        default=False, help=helps['outline'])
+    parser.add_argument('-i', '--isosurfaces',
+                        action='store', dest='isosurfaces',
+                        default=0, help=helps['isosurfaces'])
+    parser.add_argument('-e', '--edges',
+                        action='store_true', dest='show_edges',
+                        default=False, help=helps['edges'])
+    parser.add_argument('-w', '--warp', metavar='field',
+                        action='store', dest='warp',
+                        default=None, help=helps['warp'])
+    parser.add_argument('--factor', metavar='factor',
+                        action=StoreNumberAction, dest='factor',
+                        default=1., help=helps['factor'])
+    parser.add_argument('--opacity', metavar='opacity',
+                        action=StoreNumberAction, dest='opacity',
+                        default=1., help=helps['opacity'])
+    parser.add_argument('--color-map', metavar='cmap',
+                        action='store', dest='color_map',
+                        default='viridis', help=helps['color_map'])
+    parser.add_argument('--axes-options', metavar='options',
+                        action=OptsToListAction, nargs="+",
+                        dest='axes_options',
+                        default=[], help=helps['axes_options'])
+    parser.add_argument('--no-axes',
+                        action='store_false', dest='axes_visibility',
+                        default=True, help=helps['no_axes'])
+    parser.add_argument('--grid-vector1', metavar='grid_vector1',
+                        action=StoreNumberAction, dest='grid_vector1',
+                        default=None, help=helps['grid_vector1'])
+    parser.add_argument('--grid-vector2', metavar='grid_vector2',
+                        action=StoreNumberAction, dest='grid_vector2',
+                        default=None, help=helps['grid_vector2'])
+    parser.add_argument('--max-plots',
+                        action=StoreNumberAction, dest='max_plots',
+                        default=4, help=helps['max_plots'])
+    parser.add_argument('--no-labels',
+                        action='store_false', dest='show_labels',
+                        default=True, help=helps['no_labels'])
+    parser.add_argument('--label-position', metavar='position',
+                        action=StoreNumberAction, dest='label_position',
+                        default=[-1, -1, 0, 0.2], help=helps['label_position'])
+    parser.add_argument('--no-scalar-bars',
+                        action='store_false', dest='show_scalar_bars',
+                        default=True, help=helps['no_scalar_bars'])
+    parser.add_argument('--scalar-bar-size', metavar='size',
+                        action=StoreNumberAction, dest='scalar_bar_size',
+                        default=[0.15, 0.05],
+                        help=helps['scalar_bar_size'])
+    parser.add_argument('--scalar-bar-position', metavar='position',
+                        action=StoreNumberAction, dest='scalar_bar_position',
+                        default=[0.8, 0.02, 0, 1.5],
+                        help=helps['scalar_bar_position'])
+    parser.add_argument('-v', '--view', metavar='position',
+                        action=StoreNumberAction, dest='camera',
+                        default=None, help=helps['view'])
+    parser.add_argument('--camera-position', metavar='camera_position',
+                        action=StoreNumberAction, dest='camera_position',
+                        default=None, help=helps['camera_position'])
+    parser.add_argument('--window-size', metavar='window_size',
+                        action=StoreNumberAction, dest='window_size',
+                        default=pv.global_theme.window_size,
+                        help=helps['window_size'])
+    parser.add_argument('-a', '--animation', metavar='output_file',
+                        action='store', dest='anim_output_file',
+                        default=None, help=helps['animation'])
+    parser.add_argument('-r', '--frame-rate', metavar='rate',
+                        action=StoreNumberAction, dest='framerate',
+                        default=2.5, help=helps['framerate'])
+    parser.add_argument('-o', '--screenshot', metavar='output_file',
+                        action='store', dest='screenshot',
+                        default=None, help=helps['screenshot'])
+    parser.add_argument('--off-screen',
+                        action='store_true', dest='off_screen',
+                        default=False, help=helps['off_screen'])
+    parser.add_argument('-2', '--2d-view',
+                        action='store_true', dest='view_2d',
+                        default=False, help=helps['2d_view'])
+
+    parser.add_argument('filenames', nargs='+')
+    options = parser.parse_args()
+
+    pv.set_plot_theme("document")
+    plotter = pv.Plotter(off_screen=options.off_screen,
+                         title=make_title(options.filenames))
+
+    if options.anim_output_file:
+        raise NotImplementedError('Animation not implemented in this custom version')
+    else:
+        plotter : pv.Plotter = pv_plot(options.filenames, options, plotter=plotter)
+        if options.axes_visibility:
+            plotter.add_axes(**dict(options.axes_options))
+
+        plotter.add_key_event(
+            'Prior', lambda: pv_plot(options.filenames,
+                                     options,
+                                     step=plotter.resview_step,
+                                     step_inc=-1,
+                                     plotter=plotter)
+        )
+        plotter.add_key_event(
+            'Next', lambda: pv_plot(options.filenames,
+                                    options,
+                                    step=plotter.resview_step,
+                                    step_inc=1,
+                                    plotter=plotter)
+        )
+
+        plotter.view_xy()
+
+        plotter.show(screenshot=options.screenshot,
+                     window_size=options.window_size)
+
+        if options.screenshot is not None and os.path.exists(options.screenshot):
+            print(f'saved: {options.screenshot}')

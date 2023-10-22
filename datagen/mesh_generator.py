@@ -11,7 +11,7 @@ from typing import List, Tuple, OrderedDict, Dict
 from copy import deepcopy
 
 class MeshGenerator():
-    def __init__(self, num_polygons_range, points_per_polygon_range, holes_per_polygon_range, points_per_hole_range, random_seed = None):
+    def __init__(self, num_polygons_range=(1, 3), points_per_polygon_range=(3, 8), holes_per_polygon_range=(0, 3), points_per_hole_range=(3, 4), random_seed = None):
         self.num_polygons_range = num_polygons_range
         self.points_per_polygon_range = points_per_polygon_range
         self.holes_per_polygon_range = holes_per_polygon_range
@@ -122,7 +122,7 @@ class MeshGenerator():
 
         return polygon_ptags, polygon_ltag_ptags, polygon_tag
 
-    def generate_mesh(self, geometry: shapely.geometry.Polygon, name: str, mesh_size: float = 0.1, view_mesh: bool = False, filetype: str = 'mesh') -> Tuple[List[List[int]], List[OrderedDict[int, Tuple[int, int]]]]:
+    def generate_mesh(self, geometry: shapely.geometry.Polygon, name: str, mesh_size: float = 1e-2, view_mesh: bool = False, filetype: str = 'mesh') -> Tuple[List[List[int]], List[OrderedDict[int, Tuple[int, int]]]]:
         gmsh.initialize() # Initialize the Gmsh API
 
         # Get the coordinates of the external and internal polygons
