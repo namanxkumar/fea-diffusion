@@ -19,8 +19,8 @@ import math
 from PIL import Image
 
 class FEAnalysis:
-    def __init__(self, filename: str, force_vertex_tags_magnitudes: List[Tuple[int, Tuple[float, float]]], force_edges_tags_magnitudes: List[Tuple[Tuple[int, int], Tuple[int, int]]], constraints_vertex_tags: List[int], constraints_edges_tags: List[Tuple[int, int]], youngs_modulus: float = 210000, poisson_ratio: float = 0.3):
-        # self.directory = directory
+    def __init__(self, filename: str, data_dir : str, condition_dir : str, force_vertex_tags_magnitudes: List[Tuple[int, Tuple[float, float]]], force_edges_tags_magnitudes: List[Tuple[Tuple[int, int], Tuple[int, int]]], constraints_vertex_tags: List[int], constraints_edges_tags: List[Tuple[int, int]], youngs_modulus: float = 210000, poisson_ratio: float = 0.3):
+        self.data_dir = data_dir
         self.region_filename = "regions"
         self.solution_filename = "solution.vtk"
         self.initial_image_size = math.ceil(512/0.685546875)
@@ -28,7 +28,7 @@ class FEAnalysis:
         self.bounds = (0, 0, self.initial_image_size, self.initial_image_size)
         self.common_config = "-2 --color-map binary --no-scalar-bars --no-axes --window-size {},{} --off-screen".format(self.initial_image_size, self.initial_image_size)
         
-        self.mesh = Mesh.from_file(filename)
+        self.mesh = Mesh.from_file(path.join(data_dir, filename))
         self.domain = FEDomain('domain', self.mesh)
 
         self.omega = self.domain.create_region('Omega', 'all')
@@ -55,6 +55,8 @@ class FEAnalysis:
             self.force_region_name_list.append(region_name)
             magnitude = self._create_magnitude("VertexMagnitude{}".format(index), force_vertex_tags_magnitudes[index][1])
             force_vertex_region_magnitudes.append((region, magnitude))
+            with open(path.join(condition_dir, "magnitudes.txt".format(index)), "a+") as f:
+                f.write("{},{}\n".format(region_name, str(force_vertex_tags_magnitudes[index][1])))
         
         force_edges_region_magnitudes = []
         for index in range(len(force_edges_tags_magnitudes)):
@@ -64,6 +66,8 @@ class FEAnalysis:
             num_vertices = max(len(region.get_entities(0)), 1)
             magnitude = self._create_magnitude("EdgeMagnitude{}".format(index), tuple(component/num_vertices for component in force_edges_tags_magnitudes[index][1]))
             force_edges_region_magnitudes.append((region, magnitude))
+            with open(path.join(condition_dir, "magnitudes.txt".format(index)), "a+") as f:
+                f.write("{},{}\n".format(region_name, str(tuple(component/num_vertices for component in force_edges_tags_magnitudes[index][1]))))
         
         force_regions_magnitudes = force_vertex_region_magnitudes + force_edges_region_magnitudes
 
@@ -163,7 +167,7 @@ class FEAnalysis:
         return Newton({}, lin_solver=ls, status=nls_status)
     
     def _save_regions(self, problem: Problem) -> None:
-        problem.save_regions_as_groups(self.region_filename)
+        problem.save_regions_as_groups(path.join(self.data_dir, self.region_filename))
 
     # def _save_solution(self, problem: Problem, output) -> None:
     #     problem.save_state(self.solution_filename, out=output)
@@ -179,7 +183,8 @@ class FEAnalysis:
                                     data=strain, dofs=None)
         output['cauchy_stress'] = Struct(name='output_data', mode='cell',
                                     data=stress, dofs=None)
-        # print(np.array(output['cauchy_strain'].data).shape, np.array(output['cauchy_stress'].data).shape)
+        # print(strain_field.coors, stress_field.coors)
+        # print(np.max(np.squeeze(np.array(output['cauchy_strain'].data)), axis=0), np.max(np.squeeze(np.array(output['cauchy_stress'].data)), axis=0))
 
         return output
 
@@ -196,7 +201,7 @@ class FEAnalysis:
 
         self._save_regions(problem)
 
-        # problem.output_dir = "data/"
+        problem.output_dir = self.data_dir
         variables : Variables = problem.solve(save_results=True, post_process_hook=self.calculate_stress_strain)
         # print(np.array(variables.create_output()['u'].data).shape)
         # print(variables.get_state_parts())
@@ -208,7 +213,9 @@ class FEAnalysis:
         if bounds is not None:
             self.bounds = bounds
 
-    def save_input_image(self, filepath, input_filepath = "domain.00.vtk", outline = False, crop = True):
+    def save_input_image(self, filepath, input_filepath = None, outline = False, crop = True):
+        if input_filepath is None:
+            input_filepath = path.join(self.data_dir, "domain.00.vtk")
         if outline:
             plot(filenames=[input_filepath], fields=[("1", "vs")], window_size=(self.image_size, self.image_size), outline=True, screenshot=filepath)
             # system("sfepy-view {} -s 0 -f 1:vs {} --outline -o {}".format(input_filepath, self.common_config, filepath))
@@ -223,7 +230,7 @@ class FEAnalysis:
         for config in self.force_region_name_list + self.constraint_region_name_list:
             filepath = "{}_{}.png".format(filepathroot, config)
             print(config)
-            system("sfepy-view {}.vtk -f {}:vs {} -o {}".format(self.region_filename, config, self.common_config, filepath))
+            system("sfepy-view {}.vtk -f {}:vs {} -o {}".format(path.join(self.data_dir, self.region_filename), config, self.common_config, filepath))
             # plot(filenames=["{}.vtk".format(self.region_filename)], fields=[(config, "vs")], window_size=(self.image_size, self.image_size), screenshot=filepath)
             
             if crop:
@@ -231,8 +238,8 @@ class FEAnalysis:
 
     def save_output_images(self, filepathroot, save_displacement = True, save_stress = True, save_strain = True, crop = True):
         displacement_config = {
-            'displacement_x': [("u", "c0:wu")],
-            'displacement_y': [("u", "c1:wu")],
+            'displacement_x': [("u", "c0")],
+            'displacement_y': [("u", "c1")],
         }
 
         stress_config = {
@@ -260,8 +267,18 @@ class FEAnalysis:
             for type, config in output_file_config.items():
                 filepath = "{}_{}_{}.png".format(filepathroot, type, step)
                 # system("sfepy-view domain.??.vtk -f {} -s {} {} -o {}".format(config, step, self.common_config, filename))
-                plot(filenames=["domain.{:0>2}.vtk".format(s) for s in range(self.num_steps)], fields=config, step=step, window_size=(self.image_size, self.image_size), screenshot=filepath)
 
+                # these values are found by trial and error and correspond to the current force magnitude range (max 5000N), need updating if force magnitude range changes
+                if type == 'displacement_x' or type == 'displacement_y':
+                    scalar_bar_range = [-3, 3]
+                elif type == 'stress_x' or type == 'stress_y':
+                    scalar_bar_range = [-10e5, 10e5] # along x axis: [-17e5, 6.55e5], along y axis: [-3.66e5, 7.86e5]
+                elif type == 'strain_x' or type == 'strain_y':
+                    scalar_bar_range = [-10, 10]
+                
+                # plot(filenames=["domain.{:0>2}.vtk".format(s) for s in range(self.num_steps)], fields=config, step=step, window_size=(self.image_size, self.image_size), screenshot=filepath, show_scalar_bars=True)
+                plot(filenames=[path.join(self.data_dir, "domain.{:0>2}.vtk".format(s)) for s in range(self.num_steps)], fields=config, step=step, window_size=(self.image_size, self.image_size), screenshot=filepath, scalar_bar_range=scalar_bar_range)
 
                 if crop:
+                    # pass
                     self.crop_image(filepath, self.bounds)

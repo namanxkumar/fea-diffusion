@@ -231,7 +231,7 @@ class MeshGenerator():
         # Sample magnitudes for forces between 500N and 5000N
         sign = [-1, 1]
         for condition in conditions:
-            condition['point_forces'] = [(point_force, (self.random.randint(500, 10000)*self.random.choice(sign), self.random.randint(500, 5000)*self.random.choice(sign))) for point_force in condition['point_forces']]
-            condition['edge_forces'] = [(edge_force, (self.random.randint(500, 10000)*self.random.choice(sign), self.random.randint(500, 5000)*self.random.choice(sign))) for edge_force in condition['edge_forces']]
+            condition['point_forces'] = [(point_force, (self.random.randint(500, 5000)*self.random.choice(sign), self.random.randint(500, 5000)*self.random.choice(sign))) for point_force in condition['point_forces']]
+            condition['edge_forces'] = [(edge_force, (self.random.randint(500, 5000)*self.random.choice(sign), self.random.randint(500, 5000)*self.random.choice(sign))) for edge_force in condition['edge_forces']]
 
         return conditions

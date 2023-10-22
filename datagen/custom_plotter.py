@@ -79,7 +79,7 @@ helps = {
         '2d view of XY plane',
 }
 
-def plot(filenames, fields = [], fields_map = [], step = 0, outline = False, isosurfaces = 0, show_edges = False, warp = None, factor = 1., opacity = 1., color_map = 'binary', axes_options = [], axes_visibility = False, grid_vector1 = None, grid_vector2 = None, max_plots = 4, show_labels = True, label_position = [-1, -1, 0, 0.2], show_scalar_bars = False, scalar_bar_size = [0.15, 0.05], scalar_bar_position = [0.8, 0.02, 0, 1.5], camera = None, camera_position = None, window_size = pv.global_theme.window_size, anim_output_file = None, framerate = 2.5, screenshot = None, off_screen = True, view_2d = True):
+def plot(filenames, fields = [], fields_map = [], step = 0, outline = False, isosurfaces = 0, show_edges = False, warp = None, factor = 1., opacity = 1., color_map = 'binary', axes_options = [], axes_visibility = False, grid_vector1 = None, grid_vector2 = None, max_plots = 4, show_labels = True, label_position = [-1, -1, 0, 0.2], show_scalar_bars = False, scalar_bar_size = [0.15, 0.05], scalar_bar_position = [0.8, 0.02, 0, 1.5], camera = None, camera_position = None, window_size = pv.global_theme.window_size, anim_output_file = None, framerate = 2.5, screenshot = None, off_screen = True, view_2d = True, scalar_bar_range = None):
     parser = ArgumentParser(description=__doc__,
                             formatter_class=RawDescriptionHelpFormatter)
     parser.add_argument('-f', '--fields', metavar='field_spec',
@@ -202,6 +202,9 @@ def plot(filenames, fields = [], fields_map = [], step = 0, outline = False, iso
         )
 
         plotter.view_xy()
+        
+        if scalar_bar_range is not None:
+            plotter.update_scalar_bar_range(scalar_bar_range)
 
         plotter.show(screenshot=options.screenshot,
                      window_size=options.window_size)

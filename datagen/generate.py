@@ -5,7 +5,7 @@ from typing import Dict
 import os
 from tqdm import tqdm
 
-def generate_data(data_dir = "data/", image_size = 512, num_plates = 1, conditions_per_plate = 4, mesh_size = 1e-2, num_polygons_range=(1, 3), points_per_polygon_range=(3, 8), holes_per_polygon_range=(0, 3), points_per_hole_range=(3, 4), save_displacement=True, save_strain=False, save_stress=False):
+def generate_data(data_dir = "data/", image_size = 512, num_plates = 1, conditions_per_plate = 4, mesh_size = 1e-2, num_polygons_range=(1, 3), points_per_polygon_range=(3, 8), holes_per_polygon_range=(0, 3), points_per_hole_range=(3, 4), save_displacement=False, save_strain=False, save_stress=True):
     verify_directory(data_dir)
 
     generator = MeshGenerator(num_polygons_range=num_polygons_range, points_per_polygon_range=points_per_polygon_range, holes_per_polygon_range=holes_per_polygon_range, points_per_hole_range=points_per_hole_range)
@@ -24,7 +24,7 @@ def generate_data(data_dir = "data/", image_size = 512, num_plates = 1, conditio
         
         geometry = generator.normalize_geometry(geometry)
         
-        polygons_ptags, polygons_ltag_ptags = generator.generate_mesh(geometry, "part", mesh_size=mesh_size, view_mesh = False)
+        polygons_ptags, polygons_ltag_ptags = generator.generate_mesh(geometry, os.path.join(data_dir, "part"), mesh_size=mesh_size, view_mesh = False)
 
         conditions = generator.sample_conditions(polygons_ptags, polygons_ltag_ptags, num_conditions=conditions_per_plate)
 
@@ -35,14 +35,12 @@ def generate_data(data_dir = "data/", image_size = 512, num_plates = 1, conditio
         verify_directory(plate_dir)
         for condition_index in tqdm(range(len(conditions)), colour="blue"):
             # print("--- CONDITION INDEX {}".format(condition_index + 1), "\n")
+            condition_dir = os.path.join(plate_dir, str(condition_index + 1))
+            verify_directory(condition_dir)
 
-            analyzer = FEAnalysis('part.mesh', conditions[condition_index]['point_forces'], conditions[condition_index]['edge_forces'], conditions[condition_index]['point_constraints'], conditions[condition_index]['edge_constraints'], youngs_modulus=210000, poisson_ratio=0.3)
+            analyzer = FEAnalysis('part.mesh', data_dir, condition_dir, conditions[condition_index]['point_forces'], conditions[condition_index]['edge_forces'], conditions[condition_index]['point_constraints'], conditions[condition_index]['edge_constraints'], youngs_modulus=210000, poisson_ratio=0.3)
 
             analyzer.calculate()
-
-            condition_dir = os.path.join(plate_dir, str(condition_index + 1))
-
-            verify_directory(condition_dir)
 
             if condition_index == 0:
                 outline_dir = os.path.join(plate_dir, "outline.png")
