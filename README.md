@@ -4,7 +4,7 @@
 - Create a Conda env with python > 3.8
 - Install shapely and sfepy via conda
   ```sh
-  conda install -c conda_forge sfepy shapely
+  conda install -c conda-forge sfepy shapely
   ```
 - Install gmsh via pip
   ```sh
