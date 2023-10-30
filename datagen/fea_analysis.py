@@ -270,9 +270,9 @@ class FEAnalysis:
 
                 # these values are found by trial and error and correspond to the current force magnitude range (max 5000N), need updating if force magnitude range changes
                 if type == 'displacement_x' or type == 'displacement_y':
-                    scalar_bar_range = [-3, 3]
+                    scalar_bar_range = [-0.05, 0.05]
                 elif type == 'stress_x' or type == 'stress_y':
-                    scalar_bar_range = [-10e5, 10e5] # along x axis: [-17e5, 6.55e5], along y axis: [-3.66e5, 7.86e5]
+                    scalar_bar_range = [-5e5, 5e5] # along x axis: [-17e5, 6.55e5], along y axis: [-3.66e5, 7.86e5]
                 elif type == 'strain_x' or type == 'strain_y':
                     scalar_bar_range = [-10, 10]
                 

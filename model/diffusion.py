@@ -12,7 +12,7 @@ import math
 from einops.layers.torch import Rearrange
 from einops import repeat, rearrange
 
-from typing import Tuple, Optional, cast
+from typing import Optional, cast
 
 def exists(value):
     return value is not None
@@ -220,7 +220,7 @@ class UNet(nn.Module):
         positional_embedding_theta: int = 10000,
         attention_head_dim: int = 32,
         num_attention_heads: int = 4,
-        full_attention: Optional[bool] = None,    # defaults to full attention only for inner most layer
+        use_full_attention: bool = False,    # defaults to full attention only for inner most layer
         use_flash_attention: bool = False
     ):
         super().__init__()
@@ -261,7 +261,7 @@ class UNet(nn.Module):
         resnet_module = partial(ResnetBlock, num_groups_for_normalization = resnet_num_groups_for_normalization, time_embedding_dim = time_embedding_dim)
 
         # Define Attention
-        if not full_attention:
+        if not use_full_attention:
             stagewise_use_full_attention = (*((False,) * (num_stages - 1)), True)
         else:
             stagewise_use_full_attention = (True,) * num_stages
