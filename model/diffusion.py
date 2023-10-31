@@ -30,7 +30,19 @@ from typing import Optional, Dict, Tuple, Union, cast
 # In this case then, the diffusion class is not necessary and we can just create a Trainer class directly.
 
 class FEADataset(Dataset):
-    def __init__(self, folder: str, extension: str = 'png', image_size = 256, augmentation: bool = True, conditions_per_plate: int = 4, num_steps: int = 11, displacement: bool = True, strain: bool = False, stress: bool = False, min_max_magnitude: Tuple[int, int] = (500, 5000)):
+    def __init__(
+            self, 
+            folder: str, 
+            extension: str = 'png', 
+            image_size = 256, 
+            augmentation: bool = True, 
+            conditions_per_plate: int = 4, 
+            num_steps: int = 11, 
+            # displacement: bool = True, 
+            # strain: bool = False, 
+            # stress: bool = False, 
+            min_max_magnitude: Tuple[int, int] = (500, 5000)
+        ):
         super().__init__()
         self.path = Path(f'{folder}')
         assert self.path.exists(), f'Error: Dataset directory {self.path} does not exist.'
@@ -48,9 +60,9 @@ class FEADataset(Dataset):
 
         self.total_samples = self.number_of_plate_geometries * self.samples_per_plate
 
-        self.displacement = displacement
-        self.strain = strain
-        self.stress = stress
+        # self.displacement = displacement
+        # self.strain = strain
+        # self.stress = stress
         self.min_max_magnitude = min_max_magnitude
 
     def normalize_by_division(self, tensor: Tensor, value: float) -> Tensor:
@@ -87,11 +99,11 @@ class FEADataset(Dataset):
                 self.normalize_to_negative_one_to_one(transform(Image.open(self.path / f'{plate_index}' / f'{condition_index}' / f'outputs_displacement_y_{step_index - 1}.{self.extension}')))
             )
         
-        if self.displacement:
-            sample['displacement'] = (
-                self.normalize_to_negative_one_to_one(transform(Image.open(self.path / f'{plate_index}' / f'{condition_index}' / f'outputs_displacement_x_{step_index}.{self.extension}'))), 
-                self.normalize_to_negative_one_to_one(transform(Image.open(self.path / f'{plate_index}' / f'{condition_index}' / f'outputs_displacement_y_{step_index}.{self.extension}')))
-            )
+        # if self.displacement:
+        sample['displacement'] = (
+            self.normalize_to_negative_one_to_one(transform(Image.open(self.path / f'{plate_index}' / f'{condition_index}' / f'outputs_displacement_x_{step_index}.{self.extension}'))), 
+            self.normalize_to_negative_one_to_one(transform(Image.open(self.path / f'{plate_index}' / f'{condition_index}' / f'outputs_displacement_y_{step_index}.{self.extension}')))
+        ) 
         # if self.strain:
         #     sample['strain'] = (transform(Image.open(self.path / f'{plate_index}' / f'{condition_index}' / f'outputs_strain_x_{step_index}.{self.extension}')), transform(Image.open(self.path / f'{plate_index}' / f'{condition_index}' / f'outputs_strain_y_{step_index}.{self.extension}')))
         # if self.stress:
