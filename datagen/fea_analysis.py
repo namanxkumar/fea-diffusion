@@ -67,7 +67,7 @@ class FEAnalysis:
             magnitude = self._create_magnitude("EdgeMagnitude{}".format(index), tuple(component/num_vertices for component in force_edges_tags_magnitudes[index][1]))
             force_edges_region_magnitudes.append((region, magnitude))
             with open(path.join(condition_dir, "magnitudes.txt".format(index)), "a+") as f:
-                f.write("{},{}\n".format(region_name, str(tuple(component/num_vertices for component in force_edges_tags_magnitudes[index][1]))))
+                f.write("{}:{}\n".format(region_name, str(tuple(component/num_vertices for component in force_edges_tags_magnitudes[index][1]))))
         
         force_regions_magnitudes = force_vertex_region_magnitudes + force_edges_region_magnitudes
 
@@ -229,7 +229,7 @@ class FEAnalysis:
     def save_region_images(self, filepathroot, crop = True):
         for config in self.force_region_name_list + self.constraint_region_name_list:
             filepath = "{}_{}.png".format(filepathroot, config)
-            print(config)
+
             system("sfepy-view {}.vtk -f {}:vs {} -o {}".format(path.join(self.data_dir, self.region_filename), config, self.common_config, filepath))
             # plot(filenames=["{}.vtk".format(self.region_filename)], fields=[(config, "vs")], window_size=(self.image_size, self.image_size), screenshot=filepath)
             
