@@ -365,5 +365,5 @@ class UNet(nn.Module):
 
         x = self.final_resnet_block(x, time_embedding = time_embedding)
         x = self.final_convolution(x)
-        x = x / x.amax(dim = (2, 3), keepdim = True) # normalize to [-1, 1] range
+        x = x / x.amax(dim = (-2, -1), keepdim = True) # normalize to [-1, 1] range
         return x
