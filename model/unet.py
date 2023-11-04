@@ -214,9 +214,8 @@ class UNet(nn.Module):
         output_dim: Optional[int] = None,
         num_stages: int = 4,
         num_channels: int = 3,
-        use_self_condition: bool = False,
+        num_condition_channels: Optional[int] = None,
         resnet_num_groups_for_normalization: int = 8,
-        use_learned_variance: bool = False,
         positional_embedding_theta: int = 10000,
         attention_head_dim: int = 32,
         num_attention_heads: int = 4,
@@ -232,10 +231,13 @@ class UNet(nn.Module):
 
         self.num_channels = num_channels
 
-        self.use_self_condition = use_self_condition
+        self.num_condition_channels = num_condition_channels
 
-        input_channels = num_channels * (2 if use_self_condition else 1)
-
+        if exists(num_condition_channels):
+            input_channels = num_channels + num_condition_channels
+        else:
+            input_channels = num_channels
+        
         initial_dim = initial_dim if exists(initial_dim) else input_dim
 
         stagewise_dimensions = [initial_dim, *map(lambda multiplier: input_dim * multiplier, stagewise_dim_multipliers)]
@@ -243,7 +245,6 @@ class UNet(nn.Module):
 
         stagewise_input_to_output_dims = list(zip(stagewise_dimensions[:-1], stagewise_dimensions[1:]))
         assert len(stagewise_input_to_output_dims) == num_stages, 'stagewise input to output dimensions must be equal to number of stages'
-
         
         # Define Time Embedding
         time_embedding_dim = input_dim * 4
@@ -255,9 +256,7 @@ class UNet(nn.Module):
             nn.Linear(time_embedding_dim, time_embedding_dim)
         )
         
-        # Define Convolution
-        self.initial_convolution = nn.Conv2d(input_channels, initial_dim, 3, padding = 1)
-
+        # Define Resnet
         resnet_module = partial(ResnetBlock, num_groups_for_normalization = resnet_num_groups_for_normalization, time_embedding_dim = time_embedding_dim)
 
         # Define Attention
@@ -274,6 +273,8 @@ class UNet(nn.Module):
         full_attention_module = partial(FullAttention, use_flash_attention = use_flash_attention)
 
         ## Build Layers
+        self.initial_convolution = nn.Conv2d(input_channels, initial_dim, 3, padding = 1)
+
         self.down_layers = nn.ModuleList([])
         self.up_layers = nn.ModuleList([])
 
@@ -312,7 +313,7 @@ class UNet(nn.Module):
             ]))
 
         # Define Output Layer
-        output_dimension = output_dim if exists(output_dim) else (num_channels * (2 if use_learned_variance else 1))
+        output_dimension = output_dim if exists(output_dim) else num_channels
 
         self.final_resnet_block = resnet_module(input_dim*2, input_dim)
         self.final_convolution = nn.Conv2d(input_dim, output_dimension, 1)
@@ -324,7 +325,7 @@ class UNet(nn.Module):
     def forward(self, x: Tensor, time: Tensor, x_self_condition: Optional[Tensor] = None):
         assert all([divisible_by(dim, self.max_resolution) for dim in x.shape[-2:]]), f'width and height {x.shape[-2:]} must be divisible by {self.max_resolution}'
         
-        if self.use_self_condition:
+        if exists(self.num_condition_channels):
             x_self_condition = x_self_condition if exists(x_self_condition) else torch.zeros_like(x)
             x = torch.cat((x, x_self_condition), dim = 1) # concat along the channel dimension
 
@@ -363,5 +364,6 @@ class UNet(nn.Module):
         x = torch.cat((x, residual), dim = 1) # concat along the channel dimension
 
         x = self.final_resnet_block(x, time_embedding = time_embedding)
-        
-        return self.final_convolution(x)
+        x = self.final_convolution(x)
+        x = x / x.amax(dim = (2, 3), keepdim = True) # normalize to [-1, 1] range
+        return x

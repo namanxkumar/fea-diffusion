@@ -1,14 +1,18 @@
-from .unet import UNet
-
 from pathlib import Path
+
+from tqdm import tqdm
 
 import torch
 from torch import nn, Tensor
+from torch.optim import Adam
 from torch.utils.data import Dataset, DataLoader
 import torch.nn.functional as F
 import torchvision.transforms as transforms
+import torchvision.transforms.functional as TF
 
 import numpy as np
+
+from accelerate import Accelerator
 
 from PIL import Image
 
@@ -28,6 +32,9 @@ from typing import Optional, Dict, Tuple, Union, cast
 # provided as a separate datapoint sampled from the dataset.
 # 
 # In this case then, the diffusion class is not necessary and we can just create a Trainer class directly.
+
+def exists(value):
+    return value is not None
 
 class FEADataset(Dataset):
     def __init__(
@@ -74,7 +81,7 @@ class FEADataset(Dataset):
     def __len__(self):
         return self.total_samples
     
-    def __getitem__(self, index: int) -> Dict[str, Union[Tensor, Tuple[Tensor, Tensor]]]:
+    def __getitem__(self, index: int) -> Dict[str, Tensor]:
         plate_index = (index // (self.samples_per_plate)) + 1
         condition_index = (index % (self.samples_per_plate)) // self.num_steps + 1
         step_index = (index % (self.samples_per_plate)) % self.num_steps + 1
@@ -84,32 +91,41 @@ class FEADataset(Dataset):
             transforms.Grayscale(),
             transforms.RandomHorizontalFlip() if self.augmentation else transforms.Lambda(lambda x: x),
             transforms.RandomVerticalFlip() if self.augmentation else transforms.Lambda(lambda x: x),
+            transforms.Lambda(lambda x: TF.invert(x)),
             transforms.PILToTensor(),
             transforms.Lambda(lambda x: self.normalize_by_division(x, 255.0)),
         ])
         
         sample = {}
+
+        sample['geometry'] = self.normalize_to_negative_one_to_one(transform(Image.open(self.path / f'{plate_index}' / f'input.{self.extension}')))
+        
+        sample['iteration_index'] = torch.tensor(step_index)
+
         if step_index == 1:
             sample['previous_iteration'] = (
-                self.normalize_to_negative_one_to_one(transform(Image.open(self.path / f'{plate_index}' / f'input.{self.extension}'))),
+                sample['geometry'],
             )*2
         else:
             sample['previous_iteration'] = (
                 self.normalize_to_negative_one_to_one(transform(Image.open(self.path / f'{plate_index}' / f'{condition_index}' / f'outputs_displacement_x_{step_index - 1}.{self.extension}'))), 
                 self.normalize_to_negative_one_to_one(transform(Image.open(self.path / f'{plate_index}' / f'{condition_index}' / f'outputs_displacement_y_{step_index - 1}.{self.extension}')))
             )
-        
+        sample['previous_iteration'] = torch.cat(sample['previous_iteration'], dim = 0)
+
         # if self.displacement:
         sample['displacement'] = (
             self.normalize_to_negative_one_to_one(transform(Image.open(self.path / f'{plate_index}' / f'{condition_index}' / f'outputs_displacement_x_{step_index}.{self.extension}'))), 
             self.normalize_to_negative_one_to_one(transform(Image.open(self.path / f'{plate_index}' / f'{condition_index}' / f'outputs_displacement_y_{step_index}.{self.extension}')))
-        ) 
+        )
+        sample['displacement'] = torch.cat(sample['displacement'], dim = 0)
+
         # if self.strain:
         #     sample['strain'] = (transform(Image.open(self.path / f'{plate_index}' / f'{condition_index}' / f'outputs_strain_x_{step_index}.{self.extension}')), transform(Image.open(self.path / f'{plate_index}' / f'{condition_index}' / f'outputs_strain_y_{step_index}.{self.extension}')))
         # if self.stress:
         #     sample['stress'] = (transform(Image.open(self.path / f'{plate_index}' / f'{condition_index}' / f'outputs_stress_x_{step_index}.{self.extension}')), transform(Image.open(self.path / f'{plate_index}' / f'{condition_index}' / f'outputs_stress_y_{step_index}.{self.extension}')))
         
-        sample['constraints'] = transform(Image.open(self.path / f'{plate_index}' / f'{condition_index}' / f'regions_constraints.{self.extension}'))
+        sample['constraints'] = self.normalize_to_negative_one_to_one(transform(Image.open(self.path / f'{plate_index}' / f'{condition_index}' / f'regions_constraints.{self.extension}')))
 
         with open(self.path / f'{plate_index}' / f'{condition_index}' / f'magnitudes.txt', 'r') as f:
             magnitudes = list(map(lambda x: tuple(x.strip().split(':')), f.readlines()))
@@ -121,8 +137,9 @@ class FEADataset(Dataset):
             normalized_magnitude = tuple(map(lambda value: np.sign(value) * ((float(abs(value)) - self.min_max_magnitude[0]) / (self.min_max_magnitude[1] - self.min_max_magnitude[0])), values))
             forces.append((force_tensor * normalized_magnitude[0], force_tensor * normalized_magnitude[1]))
 
-        # TODO: Combine all forces into one tensor
+        # Combine all forces into one tensor
         sample['forces'] = torch.sum(torch.stack(forces, dim = 0), dim = 0) / len(forces)
+        sample['forces'] = torch.cat(sample['forces'], dim = 0)
         
         return sample
 
@@ -131,23 +148,132 @@ class Trainer():
             self,
             model: nn.Module,
             dataset_folder: str,
-            augmentation: bool = True,
+            dataset_image_size: int = 256,
+            use_dataset_augmentation: bool = True,
             train_batch_size: int = 16,
-            gradient_accumulation_steps: int = 1,
+            num_gradient_accumulation_steps: int = 1,
             train_learning_rate: float = 1e-4,
-            train_num_steps: int = 11,
+            num_train_epochs: int = 11,
             adam_betas = (0.9, 0.99),
             num_samples: int = 8,
             results_folder: str = 'results',
+            use_batch_split_over_devices: bool = True,
     ):
         super().__init__()
-        pass
+        self.accelerator = Accelerator(
+            split_batches=use_batch_split_over_devices,
+        )
 
-    def sample_iteration(self, previous_iteration, t):
-        pass
+        self.model = model
+        
+        # Parameters
+        self.num_samples = num_samples
+        
+        self.train_batch_size = train_batch_size
+        self.num_gradient_accumulation_steps = num_gradient_accumulation_steps
+        
+        assert (train_batch_size * num_gradient_accumulation_steps) >= 16, f'your effective batch size (train_batch_size x gradient_accumulate_every) should be at least 16 or above'
 
-    def calculate_losses(self, sampled_iteration, groundtruth_iteration):
-        pass
+        self.num_train_epochs = num_train_epochs
+
+        # Dataset
+        self.image_size = dataset_image_size
+        self.dataset = FEADataset(dataset_folder, image_size=dataset_image_size, augmentation=use_dataset_augmentation)
+
+        assert len(self.dataset) >= 100, 'you should have at least 100 samples in your folder. at least 10k images recommended'
+
+        self.train_dataloader = DataLoader(self.dataset, batch_size=self.train_batch_size, shuffle=True, num_workers=0, pin_memory=True)
+
+        # Optimizer
+        self.optimizer = Adam(self.model.parameters(), lr=train_learning_rate, betas=adam_betas)
+
+        # Results
+        self.results_folder = Path(results_folder)
+        self.results_folder.mkdir(exist_ok=True)
+
+        self.epoch = 0
+
+        # Prepare mode, optimizer, dataloader with accelerator
+        self.model, self.optimizer, self.train_dataloader = self.accelerator.prepare(self.model, self.optimizer, self.train_dataloader)
+
+    @property
+    def device(self):
+        return self.accelerator.device
+    
+    def save_checkpoint(self, milestone: int):
+        if not self.accelerator.is_main_process:
+            return
+        
+        checkpoint = {
+            'epoch': self.epoch,
+            'model': self.accelerator.get_state_dict(self.model),
+            'optimizer': self.optimizer.state_dict(),
+        }
+
+        torch.save(checkpoint, str(self.results_folder / f'model-{milestone}.pt'))
+
+    def load_checkpoint(self, milestone: int):
+        accelerator = self.accelerator
+        device = accelerator.device
+
+        checkpoint = torch.load(str(self.results_folder / f'model-{milestone}.pt'), map_location=device)
+
+        model: nn.Module = self.accelerator.unwrap_model(self.model)
+        model.load_state_dict(checkpoint['model'])
+
+        self.epoch = checkpoint['epoch']
+        self.optimizer.load_state_dict(checkpoint['optimizer'])
+
+    def calculate_losses(self, sampled_iteration: Tensor, groundtruth_iteration: Tensor) -> Tensor:
+        return F.mse_loss(sampled_iteration, groundtruth_iteration)
+
+    def yield_data(self) -> Dict[str, Tensor]:
+        while True:
+            for data in self.train_dataloader:
+                yield data
+    
+    def unnormalize_from_negative_one_to_one(self, tensor: Tensor) -> Tensor:
+        return (tensor + 1.0) / 2.0
+
+    def sample_model(self, sample: Dict[str, Tensor]) -> Tensor:
+        conditions = torch.cat((sample['forces'], sample['constraints']), dim = 1).to(self.device)
+        previous_iteration = sample['previous_iteration'].to(self.device)
+        iteration_index = sample['iteration_index'].to(self.device)
+        prediction = self.model(previous_iteration, iteration_index, conditions)
+
+        masked_prediction = prediction * (1.0 - self.unnormalize_from_negative_one_to_one(sample['constraints'])) # Mask out the regions that are constrained
+        masked_prediction = masked_prediction * self.unnormalize_from_negative_one_to_one(sample['geometry']) # Mask out the regions that are not part of the geometry
+        return masked_prediction
 
     def train(self):
-        pass
+        with tqdm(initial = self.epoch, total = self.num_train_epochs, disable = not self.accelerator.is_main_process) as progress_bar:
+            while self.epoch < self.num_train_epochs:
+                total_loss = 0.0
+
+                for _ in range(self.num_gradient_accumulation_steps):
+                    sample: dict = next(self.yield_data())
+                    output = self.sample_model(sample)
+
+                    loss = self.calculate_losses(output, sample['displacement'])
+                    loss = loss / self.num_gradient_accumulation_steps
+                    total_loss += loss.item()
+
+                    self.accelerator.backward(loss)
+
+                progress_bar.set_description(f'loss: {total_loss:.4f}')
+
+                self.accelerator.wait_for_everyone()
+                self.accelerator.clip_grad_norm_(self.model.parameters(), self.max_grad_norm)
+
+                self.optimizer.step()
+                self.optimizer.zero_grad()
+
+                self.accelerator.wait_for_everyone()
+
+                self.epoch += 1
+
+                if self.accelerator.is_main_process:
+                    pass
+
+                progress_bar.update(1)
+        self.accelerator.print('Training done!')
