@@ -219,7 +219,7 @@ class Trainer():
     def device(self):
         return self.accelerator.device
     
-    def save_checkpoint(self, milestone: int):
+    def save_checkpoint(self, milestone):
         if not self.accelerator.is_local_main_process:
             return
         
@@ -336,4 +336,7 @@ class Trainer():
                         self.save_checkpoint(milestone)
 
                 progress_bar.update(1)
+                
+        self.accelerator.wait_for_everyone()
+        self.save_checkpoint('final')
         self.accelerator.print('Training done!')
