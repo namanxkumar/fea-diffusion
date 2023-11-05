@@ -12,6 +12,8 @@ parser.add_argument('--save_stress', action='store_true', help='Save stress imag
 parser.add_argument('--data_dir', type=str, default='data', help='Data directory.')
 args = parser.parse_args()
 
+assert args.save_displacement or args.save_strain or args.save_stress, 'Must save at least one of displacement, strain, or stress.'
+
 generate_data(
     data_dir=args.data_dir,
     image_size=args.image_size,
