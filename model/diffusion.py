@@ -124,7 +124,14 @@ class FEADataset(Dataset):
         # if self.stress:
         #     sample['stress'] = (transform(Image.open(self.path / f'{plate_index}' / f'{condition_index}' / f'outputs_stress_x_{step_index}.{self.extension}')), transform(Image.open(self.path / f'{plate_index}' / f'{condition_index}' / f'outputs_stress_y_{step_index}.{self.extension}')))
         
-        sample['constraints'] = self.normalize_to_negative_one_to_one(transform(Image.open(self.path / f'{plate_index}' / f'{condition_index}' / f'regions_constraints.{self.extension}')))
+        constraints = []
+        condition_path = self.path / f'{plate_index}' / f'{condition_index}'
+        for path in condition_path.iterdir:
+            if "Constraint" in path:
+                constraint = self.normalize_to_negative_one_to_one(transform(Image.open(path)))
+
+        sample['constraints'] = torch.clamp(torch.sum(torch.stack(constraints, dim = 0), dim = 0), min=-1.0, max=1.0)
+        sample['constraints'] = torch.cat(sample['constraints'], dim = 0)
 
         with open(self.path / f'{plate_index}' / f'{condition_index}' / f'magnitudes.txt', 'r') as f:
             magnitudes = list(map(lambda x: tuple(x.strip().split(':')), f.readlines()))
@@ -137,7 +144,7 @@ class FEADataset(Dataset):
             forces.append((force_tensor * normalized_magnitude[0], force_tensor * normalized_magnitude[1]))
 
         # Combine all forces into one tensor
-        sample['forces'] = torch.sum(torch.stack(forces, dim = 0), dim = 0) / len(forces)
+        sample['forces'] = torch.clamp(torch.sum(torch.stack(forces, dim = 0), dim = 0), min=-1.0, max=1.0)
         sample['forces'] = torch.cat(sample['forces'], dim = 0)
         
         return sample
