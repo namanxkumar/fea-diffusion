@@ -5,12 +5,18 @@ from typing import Dict
 import os
 from tqdm import tqdm
 
-def generate_data(data_dir = "data/", image_size = 512, num_plates = 1, conditions_per_plate = 4, mesh_size = 1e-2, num_polygons_range=(1, 3), points_per_polygon_range=(3, 8), holes_per_polygon_range=(0, 3), points_per_hole_range=(3, 4), save_displacement=True, save_strain=False, save_stress=False):
+def generate_data(data_dir = "data/", image_size = 512, num_plates = 1, start_plate = None, conditions_per_plate = 4, mesh_size = 1e-2, num_polygons_range=(1, 3), points_per_polygon_range=(3, 8), holes_per_polygon_range=(0, 3), points_per_hole_range=(3, 4), save_displacement=True, save_strain=False, save_stress=False):
     verify_directory(data_dir)
 
     generator = MeshGenerator(num_polygons_range=num_polygons_range, points_per_polygon_range=points_per_polygon_range, holes_per_polygon_range=holes_per_polygon_range, points_per_hole_range=points_per_hole_range)
 
-    plate_index = 0
+    assert num_plates >= 1
+    assert conditions_per_plate >= 1
+
+    if start_plate is not None:
+        assert start_plate < num_plates and start_plate >= 0
+
+    plate_index = (start_plate - 1) if (start_plate is not None) else 0
     plate_image_size, plate_bounds = None, None
 
     plate_progress_bar = tqdm(total=num_plates, colour="green")
