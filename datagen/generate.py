@@ -20,6 +20,7 @@ def generate_data(data_dir = "data/", image_size = 512, num_plates = 1, start_pl
     plate_image_size, plate_bounds = None, None
 
     plate_progress_bar = tqdm(total=num_plates, colour="green")
+    plate_progress_bar.update(plate_index)
     while plate_index < num_plates:
         try:
             geometry = generator.generate_geometry()
