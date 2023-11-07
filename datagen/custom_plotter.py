@@ -1,7 +1,8 @@
-from sfepy.scripts.resview import pv_plot, FieldOptsToListAction, StoreNumberAction, OptsToListAction, make_title
+from sfepy.scripts.resview import read_mesh, pv_plot, FieldOptsToListAction, StoreNumberAction, OptsToListAction, make_title
 from argparse import ArgumentParser, RawDescriptionHelpFormatter
 import pyvista as pv
 import os
+import numpy as np
 
 helps = {
     'fields':
@@ -182,24 +183,48 @@ def plot(filenames, fields = [], fields_map = [], step = 0, outline = False, iso
     if options.anim_output_file:
         raise NotImplementedError('Animation not implemented in this custom version')
     else:
-        plotter : pv.Plotter = pv_plot(options.filenames, options, plotter=plotter)
+        # _, n_steps = read_mesh(options.filenames, ret_n_steps=True)
+        # # dry run
+        # scalar_bar_limits = None
+        # if options.axes_visibility:
+        #     plotter.add_axes(**dict(options.axes_options))
+        # for step in range(n_steps):
+        #     plotter.clear()
+        #     plotter, sb_limits = pv_plot(options.filenames, options,
+        #                                     plotter=plotter, step=step,
+        #                                     ret_scalar_bar_limits=True)
+        #     if scalar_bar_limits is None:
+        #         scalar_bar_limits = {k: [] for k in sb_limits.keys()}
+
+        #     for k, v in sb_limits.items():
+        #         scalar_bar_limits[k].append(v)
+        
+        # plotter.view_xy()
+        
+        # for k in scalar_bar_limits.keys():
+        #     lims = scalar_bar_limits[k]
+        #     clim = (np.min([v[0] for v in lims]),
+        #             np.max([v[1] for v in lims]))
+        #     scalar_bar_limits[k] = clim
+
+        # plotter.clear()
+        # plotter : pv.Plotter = pv_plot(options.filenames, options, plotter=plotter, step=step, scalar_bar_limits=scalar_bar_limits)
+        # if options.axes_visibility:
+        #         plotter.add_axes(**dict(options.axes_options))
+        # # if scalar_bar_range is not None:
+        # #     plotter.update_scalar_bar_range(scalar_bar_range)
+
+        # plotter.show(screenshot=options.screenshot,
+        #              window_size=options.window_size)
+
+        # if options.screenshot is not None and os.path.exists(options.screenshot):
+        #     print(f'saved: {options.screenshot}')
+
+        # plotter.close()
+        plotter.clear()
+        plotter : pv.Plotter = pv_plot(options.filenames, options, plotter=plotter, use_cache=False)
         if options.axes_visibility:
             plotter.add_axes(**dict(options.axes_options))
-
-        plotter.add_key_event(
-            'Prior', lambda: pv_plot(options.filenames,
-                                     options,
-                                     step=plotter.resview_step,
-                                     step_inc=-1,
-                                     plotter=plotter)
-        )
-        plotter.add_key_event(
-            'Next', lambda: pv_plot(options.filenames,
-                                    options,
-                                    step=plotter.resview_step,
-                                    step_inc=1,
-                                    plotter=plotter)
-        )
 
         plotter.view_xy()
         
@@ -211,3 +236,5 @@ def plot(filenames, fields = [], fields_map = [], step = 0, outline = False, iso
 
         if options.screenshot is not None and os.path.exists(options.screenshot):
             print(f'saved: {options.screenshot}')
+
+        plotter.close()

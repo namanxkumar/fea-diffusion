@@ -14,7 +14,8 @@ from .custom_plotter import plot
 
 import numpy as np
 from typing import Tuple, List
-from os import path, system
+import os
+from os import path
 import math
 from PIL import Image
 
@@ -22,7 +23,7 @@ class FEAnalysis:
     def __init__(self, filename: str, data_dir : str, condition_dir : str, force_vertex_tags_magnitudes: List[Tuple[int, Tuple[float, float]]], force_edges_tags_magnitudes: List[Tuple[Tuple[int, int], Tuple[int, int]]], constraints_vertex_tags: List[int], constraints_edges_tags: List[Tuple[int, int]], youngs_modulus: float = 210000, poisson_ratio: float = 0.3):
         self.data_dir = data_dir
         self.region_filename = "regions"
-        self.solution_filename = "solution.vtk"
+        # self.solution_filename = "solution.vtk"
         self.initial_image_size = math.ceil(512/0.685546875)
         self.image_size = self.initial_image_size
         self.bounds = (0, 0, self.initial_image_size, self.initial_image_size)
@@ -167,6 +168,8 @@ class FEAnalysis:
         return Newton({}, lin_solver=ls, status=nls_status)
     
     def _save_regions(self, problem: Problem) -> None:
+        if path.isfile(path.join(self.data_dir, self.region_filename + ".vtk")):
+            os.remove(path.join(self.data_dir, self.region_filename + ".vtk"))
         problem.save_regions_as_groups(path.join(self.data_dir, self.region_filename))
 
     # def _save_solution(self, problem: Problem, output) -> None:
