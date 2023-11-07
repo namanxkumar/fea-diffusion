@@ -230,8 +230,8 @@ class FEAnalysis:
         for config in self.force_region_name_list + self.constraint_region_name_list:
             filepath = "{}_{}.png".format(filepathroot, config)
 
-            # system("sfepy-view {}.vtk -f {}:vs {} -o {}".format(path.join(self.data_dir, self.region_filename), config, self.common_config, filepath))
-            plot(filenames=["{}.vtk".format(path.join(self.data_dir, self.region_filename))], fields=[(config, "vs")], window_size=(self.image_size, self.image_size), screenshot=filepath)
+            system("sfepy-view {}.vtk -f {}:vs {} -o {}".format(path.join(self.data_dir, self.region_filename), config, self.common_config, filepath))
+            # plot(filenames=["{}.vtk".format(path.join(self.data_dir, self.region_filename))], fields=[(config, "vs")], window_size=(self.image_size, self.image_size), screenshot=filepath)
             
             if crop:
                 self.crop_image(filepath, self.bounds)
