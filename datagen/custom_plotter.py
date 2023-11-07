@@ -1,8 +1,8 @@
-from sfepy.scripts.resview import read_mesh, pv_plot, FieldOptsToListAction, StoreNumberAction, OptsToListAction, make_title
-from argparse import ArgumentParser, RawDescriptionHelpFormatter, Namespace
+from sfepy.scripts.resview import read_mesh, pv_plot, make_title
+from argparse import Namespace
 import pyvista as pv
 import os
-import numpy as np
+# import numpy as np
 
 helps = {
     'fields':
