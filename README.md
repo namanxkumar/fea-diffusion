@@ -16,6 +16,6 @@
   ```
 - Install torch and other dependencies via pip
   ```sh
-  pip install torch torchvision einops tqdm accelerate ema_pytorch
+  pip install torch torchvision einops tqdm accelerate ema_pytorch jaxlib
   ```
 - Run [main.py](main.py)!
