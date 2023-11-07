@@ -1,6 +1,4 @@
 from datagen.generate import generate_data
-
-from datagen.generate import generate_data
 import argparse
 
 parser = argparse.ArgumentParser(description='Generate data for training.')
