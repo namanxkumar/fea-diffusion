@@ -19,6 +19,7 @@ generate_data(
     data_dir=args.data_dir,
     image_size=args.image_size,
     num_plates=args.num_plates,
+    start_plate=args.start_plate,
     conditions_per_plate=args.conditions_per_plate,
     mesh_size=args.mesh_size,
     save_displacement=args.save_displacement,
