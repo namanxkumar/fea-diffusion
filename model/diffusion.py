@@ -99,6 +99,8 @@ class FEADataset(Dataset):
 
         sample['geometry'] = self.normalize_to_negative_one_to_one(transform(Image.open(self.path / f'{plate_index}' / f'input.{self.extension}')))
         
+        sample['plate_index'] = torch.tensor(plate_index)
+        sample['condition_index'] = torch.tensor(condition_index)
         sample['iteration_index'] = torch.tensor(step_index)
 
         if step_index == 1:
@@ -126,12 +128,10 @@ class FEADataset(Dataset):
         
         constraints = []
         condition_path = self.path / f'{plate_index}' / f'{condition_index}'
-        for path in condition_path.iterdir:
-            if "Constraint" in path:
-                constraint = self.normalize_to_negative_one_to_one(transform(Image.open(path)))
-
-        sample['constraints'] = torch.clamp(torch.sum(torch.stack(constraints, dim = 0), dim = 0), min=-1.0, max=1.0)
-        sample['constraints'] = torch.cat(sample['constraints'], dim = 0)
+        for path in condition_path.iterdir():
+            if path.match("*Constraint*"):
+                constraints.append(transform(Image.open(path)))
+        sample['constraints'] = self.normalize_to_negative_one_to_one(torch.clamp(torch.sum(torch.stack(constraints, dim = 0), dim = 0), min=0, max=1.0))
 
         with open(self.path / f'{plate_index}' / f'{condition_index}' / f'magnitudes.txt', 'r') as f:
             magnitudes = list(map(lambda x: tuple(x.strip().split(':')), f.readlines()))
@@ -139,13 +139,13 @@ class FEADataset(Dataset):
         forces = []
 
         for name, values in magnitudes:
+            values = eval(values)
             force_tensor = transform(Image.open(self.path / f'{plate_index}' / f'{condition_index}' / f'regions_{name}.{self.extension}'))
             normalized_magnitude = tuple(map(lambda value: np.sign(value) * ((float(abs(value)) - self.min_max_magnitude[0]) / (self.min_max_magnitude[1] - self.min_max_magnitude[0])), values))
-            forces.append((force_tensor * normalized_magnitude[0], force_tensor * normalized_magnitude[1]))
+            forces.append(torch.cat((force_tensor * normalized_magnitude[0], force_tensor * normalized_magnitude[1]), dim = 0))
 
         # Combine all forces into one tensor
         sample['forces'] = torch.clamp(torch.sum(torch.stack(forces, dim = 0), dim = 0), min=-1.0, max=1.0)
-        sample['forces'] = torch.cat(sample['forces'], dim = 0)
         
         return sample
 
@@ -206,7 +206,7 @@ class Trainer():
 
         # Results
         if self.accelerator.is_main_process:
-            self.ema = EMA(self.model, decay=ema_decay, update_every=ema_epochs_per_milestone)
+            self.ema = EMA(self.model, beta=ema_decay, update_every=ema_epochs_per_milestone)
             self.ema.to(self.device)
 
 
@@ -263,7 +263,8 @@ class Trainer():
             for data in dataloader:
                 yield data
     
-    def unnormalize_from_negative_one_to_one(self, tensor: Tensor) -> Tensor:
+    @staticmethod
+    def unnormalize_from_negative_one_to_one(tensor: Tensor) -> Tensor:
         return (tensor + 1.0) / 2.0
 
     def create_view_friendly_image(self, image: Tensor) -> Image.Image:
@@ -272,6 +273,7 @@ class Trainer():
         image = TF.invert(image)
         image = image.repeat(3, 1, 1)
         image = TF.to_pil_image(image)
+        return image
 
     def sample_model(self, sample: Dict[str, Tensor], use_ema_model: bool = False) -> Tensor:
         conditions = torch.cat((sample['forces'], sample['constraints']), dim = 1).to(self.device)

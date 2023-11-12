@@ -1,9 +1,11 @@
 /.opt
 /__pycache__
 datagen/__pycache__
+model/__pycache__
 data/
 old_data/
 part.*
 regions.*
 domain.*
 box.*
+feadata2500/

@@ -57,7 +57,7 @@ class FEAnalysis:
             magnitude = self._create_magnitude("VertexMagnitude{}".format(index), force_vertex_tags_magnitudes[index][1])
             force_vertex_region_magnitudes.append((region, magnitude))
             with open(path.join(condition_dir, "magnitudes.txt".format(index)), "a+") as f:
-                f.write("{},{}\n".format(region_name, str(force_vertex_tags_magnitudes[index][1])))
+                f.write("{}:{}\n".format(region_name, str(force_vertex_tags_magnitudes[index][1])))
         
         force_edges_region_magnitudes = []
         for index in range(len(force_edges_tags_magnitudes)):
