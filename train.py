@@ -11,7 +11,8 @@ parser.add_argument('--results_dir', type=str, default='results', help='Results 
 parser.add_argument('--image_size', type=int, default=256, help='Image size.')
 parser.add_argument('--batch_size', type=int, default=16, help='Batch size.')
 parser.add_argument('--num_steps', type=int, default=100, help='Number of steps.')
-parser.add_argument('--num_steps_per_milestone', type=int, default=10, help='Number of steps per milestone.')
+parser.add_argument('--num_steps_per_milestone', type=int, default=1000, help='Number of steps per milestone.')
+parser.add_argument('--ema_steps_per_milestone', type=int, default=10, help='EMA steps per milestone.')
 parser.add_argument('--learning_rate', type=float, default=1e-4, help='Learning rate.')
 
 args = parser.parse_args()
@@ -34,6 +35,7 @@ trainer = Trainer(
     train_learning_rate=args.learning_rate,
     num_train_steps=args.num_steps,
     num_steps_per_milestone=args.num_steps_per_milestone,
+    ema_steps_per_milestone=args.ema_steps_per_milestone,
     results_folder=args.results_dir,
     use_batch_split_over_devices=True,
 )
