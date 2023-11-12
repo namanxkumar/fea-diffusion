@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from tqdm import tqdm
+from tqdm.auto import tqdm
 
 import torch
 from torch import nn, Tensor
@@ -159,14 +159,15 @@ class Trainer():
             use_dataset_augmentation: bool = True,
             train_batch_size: int = 16,
             sample_batch_size: Optional[int] = None,
+            num_sample_conditions_per_plate: int = 1,
             num_gradient_accumulation_steps: int = 1,
             train_learning_rate: float = 1e-4,
-            num_train_epochs: int = 1000,
-            num_epochs_per_milestone: int = 100,
+            num_train_steps: int = 1000,
+            num_steps_per_milestone: int = 100,
             adam_betas = (0.9, 0.99),
             max_gradient_norm: float = 1.0,
             ema_decay: float = 0.995,
-            ema_epochs_per_milestone: int = 10,
+            ema_steps_per_milestone: int = 10,
             results_folder: str = 'results',
             use_batch_split_over_devices: bool = True,
     ):
@@ -178,7 +179,7 @@ class Trainer():
         self.model = model
         
         # Parameters
-        self.num_epochs_per_milestone = num_epochs_per_milestone
+        self.num_steps_per_milestone = num_steps_per_milestone
         self.sample_batch_size = sample_batch_size if exists(sample_batch_size) else train_batch_size
         
         self.train_batch_size = train_batch_size
@@ -186,14 +187,14 @@ class Trainer():
 
         self.max_gradient_norm = max_gradient_norm
         
-        assert (train_batch_size * num_gradient_accumulation_steps) >= 16, f'your effective batch size (train_batch_size x gradient_accumulate_every) should be at least 16 or above'
+        assert (train_batch_size * num_gradient_accumulation_steps) >= 16, f'your effective batch size (train_batch_size x num_gradient_accumulation_steps) should be at least 16 or above'
 
-        self.num_train_epochs = num_train_epochs
+        self.num_train_steps = num_train_steps
 
         # Dataset
         self.image_size = dataset_image_size
         self.dataset = FEADataset(dataset_folder, image_size=dataset_image_size, augmentation=use_dataset_augmentation)
-        self.sample_dataset = FEADataset(sample_dataset_folder, image_size=dataset_image_size, augmentation=False)
+        self.sample_dataset = FEADataset(sample_dataset_folder, image_size=dataset_image_size, augmentation=False, conditions_per_plate=num_sample_conditions_per_plate)
         self.num_samples = len(self.sample_dataset)
 
         assert len(self.dataset) >= 100, 'you should have at least 100 samples in your folder. at least 10k images recommended'
@@ -206,17 +207,17 @@ class Trainer():
 
         # Results
         if self.accelerator.is_main_process:
-            self.ema = EMA(self.model, beta=ema_decay, update_every=ema_epochs_per_milestone)
+            self.ema = EMA(self.model, beta=ema_decay, update_every=ema_steps_per_milestone)
             self.ema.to(self.device)
 
 
         self.results_folder = Path(results_folder)
         self.results_folder.mkdir(exist_ok=True)
 
-        log_name = 'train-e{}-b{}-lr{}-{}.log'.format(num_train_epochs, train_batch_size, str(train_learning_rate)[2:], datetime.now().strftime("%Y-%m-%d-%H-%M-%S"))
+        log_name = 'train-e{}-b{}-lr{}-{}.log'.format(num_train_steps, train_batch_size, str(train_learning_rate)[2:], datetime.now().strftime("%Y-%m-%d-%H-%M-%S"))
         logging.basicConfig(filename=(self.results_folder / log_name), level=logging.INFO, format='%(asctime)s %(message)s', force=True)
 
-        self.epoch = 0
+        self.step = 0
 
         # Prepare mode, optimizer, dataloader with accelerator
         self.model, self.optimizer, self.train_dataloader, self.sample_dataloader = self.accelerator.prepare(self.model, self.optimizer, self.train_dataloader, self.sample_dataloader)
@@ -231,7 +232,7 @@ class Trainer():
             return
         
         checkpoint = {
-            'epoch': self.epoch,
+            'step': self.step,
             'model': self.accelerator.get_state_dict(self.model),
             'optimizer': self.optimizer.state_dict(),
             'ema': self.ema.state_dict(),
@@ -248,7 +249,7 @@ class Trainer():
         model: nn.Module = self.accelerator.unwrap_model(self.model)
         model.load_state_dict(checkpoint['model'])
 
-        self.epoch = checkpoint['epoch']
+        self.step = checkpoint['step']
         self.optimizer.load_state_dict(checkpoint['optimizer'])
 
         if self.accelerator.is_main_process:
@@ -268,6 +269,7 @@ class Trainer():
         return (tensor + 1.0) / 2.0
 
     def create_view_friendly_image(self, image: Tensor) -> Image.Image:
+        image = image[None, ...]
         image = self.unnormalize_from_negative_one_to_one(image)
         image = image * 255.0
         image = TF.invert(image)
@@ -276,7 +278,7 @@ class Trainer():
         return image
 
     def sample_model(self, sample: Dict[str, Tensor], use_ema_model: bool = False) -> Tensor:
-        conditions = torch.cat((sample['forces'], sample['constraints']), dim = 1).to(self.device)
+        conditions = torch.cat((sample['forces'], sample['constraints'], sample['geometry']), dim = 1).to(self.device)
         previous_iteration = sample['previous_iteration'].to(self.device)
         iteration_index = sample['iteration_index'].to(self.device)
         prediction = self.model(previous_iteration, iteration_index, conditions) if not use_ema_model else self.ema.ema_model(previous_iteration, iteration_index, conditions)
@@ -289,14 +291,19 @@ class Trainer():
         with torch.inference_mode():
             output = self.sample_model(batch, use_ema_model)
             loss = self.calculate_losses(output, batch['displacement'])
-            images = [self.create_view_friendly_image(output[i]) for i in range(output.shape[0])]
+            images = []
+            for i in range(output.shape[0]):
+                for j in range(output.shape[1]):
+                    images.append(self.create_view_friendly_image(output[i][j]))
             return images, loss
             
     def train(self):
-        with tqdm(initial = self.epoch, total = self.num_train_epochs, disable = not self.accelerator.is_main_process) as progress_bar:
-            while self.epoch < self.num_train_epochs:
+        print('Epoch Size: {} effective batches'.format((len(self.train_dataloader)/(self.num_gradient_accumulation_steps))))
+        print('Number of Effective Epochs: {}'.format(self.num_train_steps/(len(self.train_dataloader)/(self.num_gradient_accumulation_steps))))
+        with tqdm(initial = self.step, total = self.num_train_steps, disable = not self.accelerator.is_main_process) as progress_bar:
+            while self.step < self.num_train_steps:
                 total_loss = 0.0
-
+                # with tqdm(initial = 0, total = self.num_gradient_accumulation_steps, disable = not self.accelerator.is_main_process, leave=False) as inner_progress_bar:
                 for _ in range(self.num_gradient_accumulation_steps):
                     sample: dict = next(self.train_yielder)
                     output = self.sample_model(sample)
@@ -304,12 +311,13 @@ class Trainer():
                     loss = self.calculate_losses(output, sample['displacement'])
                     loss = loss / self.num_gradient_accumulation_steps
                     total_loss += loss.item()
-
+                    # inner_progress_bar.set_description(f'current batch loss: {total_loss:.4f}')
                     self.accelerator.backward(loss)
+                    # inner_progress_bar.update(1)
 
-                progress_bar.set_description(f'loss: {total_loss:.4f}')
+                progress_bar.set_description(f'loss: {total_loss:.4f} ')
                 
-                logging.info(f'epoch: {self.epoch}, loss: {total_loss:.4f}')
+                logging.info(f'step: {self.step}, loss: {total_loss:.4f}')
 
                 self.accelerator.wait_for_everyone()
                 self.accelerator.clip_grad_norm_(self.model.parameters(), self.max_gradient_norm) # Gradient clipping
@@ -319,15 +327,15 @@ class Trainer():
 
                 self.accelerator.wait_for_everyone()
 
-                self.epoch += 1
+                self.step += 1
 
                 if self.accelerator.is_main_process:
                     self.ema.update()
-                    if self.epoch != 0 and self.epoch % self.num_epochs_per_milestone == 0:
+                    if self.step != 0 and self.step % self.num_steps_per_milestone == 0:
                         self.ema.ema_model.eval()
                         
                         with torch.inference_mode():
-                            milestone = self.epoch // self.num_epochs_per_milestone
+                            milestone = self.step // self.num_steps_per_milestone
                             loss = 0.0
                             num_batches = 0
                             sampled_images: List[Image.Image] = []
@@ -340,7 +348,7 @@ class Trainer():
                             # self.accelerator.print(f'sample loss: {loss:.4f}')
                             logging.info(f'sample loss: {loss:.4f}')
                             for i, image in enumerate(sampled_images):
-                                image.save(str(self.results_folder / f'milestone-{milestone}-sample-{i}.png'))
+                                image.save(str(self.results_folder / f'sample-{i}.png'))
                             
                         self.save_checkpoint(milestone)
 

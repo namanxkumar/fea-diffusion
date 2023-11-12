@@ -3,9 +3,8 @@
 datagen/__pycache__
 model/__pycache__
 data/
-old_data/
+results/
 part.*
 regions.*
 domain.*
 box.*
-feadata2500/

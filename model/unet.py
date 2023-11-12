@@ -104,7 +104,7 @@ class ResnetBlock(nn.Module):
         ) if exists(time_embedding_dim) else None
 
         self.block1 = ResnetSubBlock(input_dim, output_dim, num_groups_for_normalization = num_groups_for_normalization)
-        self.block2 = ResnetSubBlock(input_dim, output_dim, num_groups_for_normalization = num_groups_for_normalization)
+        self.block2 = ResnetSubBlock(output_dim, output_dim, num_groups_for_normalization = num_groups_for_normalization)
         self.residual_convolution = nn.Conv2d(input_dim, output_dim, 1) if input_dim != output_dim else nn.Identity()
 
     def forward(self, x: torch.Tensor, time_embedding: Optional[Tensor] = None):
@@ -211,7 +211,7 @@ class UNet(nn.Module):
         self,
         input_dim: int,
         initial_dim: Optional[int] = None,
-        output_dim: Optional[int] = None,
+        final_dim: Optional[int] = None,
         num_stages: int = 4,
         num_channels: int = 3,
         num_condition_channels: Optional[int] = None,
@@ -250,7 +250,7 @@ class UNet(nn.Module):
         time_embedding_dim = input_dim * 4
 
         self.time_embedding_mlp = nn.Sequential(
-            SinusoidalPosEmb(time_embedding_dim, theta = positional_embedding_theta),
+            SinusoidalPosEmb(input_dim, theta = positional_embedding_theta),
             nn.Linear(input_dim, time_embedding_dim),
             nn.GELU(),
             nn.Linear(time_embedding_dim, time_embedding_dim)
@@ -313,10 +313,10 @@ class UNet(nn.Module):
             ]))
 
         # Define Output Layer
-        output_dimension = output_dim if exists(output_dim) else num_channels
+        self.final_dim = final_dim if exists(final_dim) else num_channels
 
         self.final_resnet_block = resnet_module(input_dim*2, input_dim)
-        self.final_convolution = nn.Conv2d(input_dim, output_dimension, 1)
+        self.final_convolution = nn.Conv2d(input_dim, self.final_dim, 1)
 
     @property
     def max_resolution(self):
