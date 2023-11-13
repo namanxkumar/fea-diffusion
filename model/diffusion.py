@@ -297,7 +297,7 @@ class Trainer():
                     images.append(self.create_view_friendly_image(output[i][j]))
             return images, loss
             
-    def train(self, inject_function: function = None):
+    def train(self, wandb_inject_function: function = None):
         print('Epoch Size: {} effective batches'.format((len(self.train_dataloader)/(self.num_gradient_accumulation_steps))))
         print('Number of Effective Epochs: {}'.format(self.num_train_steps/(len(self.train_dataloader)/(self.num_gradient_accumulation_steps))))
         with tqdm(initial = self.step, total = self.num_train_steps, disable = not self.accelerator.is_main_process) as progress_bar:
@@ -333,6 +333,7 @@ class Trainer():
                     
                     self.ema.update()
                     total_sample_loss = None
+                    sampled_images = None
                     if self.step != 0 and self.step % self.num_steps_per_milestone == 0:
                         self.ema.ema_model.eval()
                         
@@ -353,8 +354,8 @@ class Trainer():
                                 image.save(str(self.results_folder / f'sample-{i}.png'))
                         self.save_checkpoint(milestone)
 
-                    if exists(inject_function):
-                        inject_function(self.step, total_loss, total_sample_loss)
+                    if exists(wandb_inject_function):
+                        wandb_inject_function(self.step, total_loss, total_sample_loss, sampled_images)
                         
                 progress_bar.update(1)
                 
