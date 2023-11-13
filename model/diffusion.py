@@ -297,7 +297,7 @@ class Trainer():
                     images.append(self.create_view_friendly_image(output[i][j]))
             return images, loss
             
-    def train(self, wandb_inject_function: function = None):
+    def train(self, wandb_inject_function = None):
         print('Epoch Size: {} effective batches'.format((len(self.train_dataloader)/(self.num_gradient_accumulation_steps))))
         print('Number of Effective Epochs: {}'.format(self.num_train_steps/(len(self.train_dataloader)/(self.num_gradient_accumulation_steps))))
         with tqdm(initial = self.step, total = self.num_train_steps, disable = not self.accelerator.is_main_process) as progress_bar:
