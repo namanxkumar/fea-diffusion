@@ -20,7 +20,7 @@ import math
 from PIL import Image
 
 class FEAnalysis:
-    def __init__(self, filename: str, data_dir : str, condition_dir : str, force_vertex_tags_magnitudes: List[Tuple[int, Tuple[float, float]]], force_edges_tags_magnitudes: List[Tuple[Tuple[int, int], Tuple[int, int]]], constraints_vertex_tags: List[int], constraints_edges_tags: List[Tuple[int, int]], youngs_modulus: float = 210000, poisson_ratio: float = 0.3):
+    def __init__(self, filename: str, data_dir : str, condition_dir : str, force_vertex_tags_magnitudes: List[Tuple[int, Tuple[float, float]]], force_edges_tags_magnitudes: List[Tuple[Tuple[int, int], Tuple[int, int]]], constraints_vertex_tags: List[int], constraints_edges_tags: List[Tuple[int, int]], youngs_modulus: float = 210000, poisson_ratio: float = 0.3, num_steps: int = 11):
         self.data_dir = data_dir
         self.region_filename = "regions"
         # self.solution_filename = "solution.vtk"
@@ -85,7 +85,7 @@ class FEAnalysis:
         self.lhs_term = Term.new('dw_lin_elastic(m.D, v, u)', self.integral_2, self.omega, m=self.material, v=self.test_field, u=self.unknown_field)
 
         self.nls_solver = self._create_nls_solver()
-        self.num_steps = 11
+        self.num_steps = num_steps
     
     @staticmethod
     def crop_image(image_path, bounds):

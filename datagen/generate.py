@@ -5,7 +5,7 @@ from typing import Dict
 import os
 from tqdm.autonotebook import tqdm
 
-def generate_data(data_dir = "data/", image_size = 512, num_plates = 1, start_plate = None, conditions_per_plate = 4, mesh_size = 1e-2, num_polygons_range=(1, 3), points_per_polygon_range=(3, 8), holes_per_polygon_range=(0, 3), points_per_hole_range=(3, 4), save_displacement=True, save_strain=False, save_stress=False):
+def generate_data(data_dir = "data/", image_size = 512, num_plates = 1, start_plate = None, conditions_per_plate = 4, mesh_size = 1e-2, num_polygons_range=(1, 3), points_per_polygon_range=(3, 8), holes_per_polygon_range=(0, 3), points_per_hole_range=(3, 4), save_displacement=True, save_strain=False, save_stress=False, num_steps_per_condition: int = 11):
     verify_directory(data_dir)
 
     generator = MeshGenerator(num_polygons_range=num_polygons_range, points_per_polygon_range=points_per_polygon_range, holes_per_polygon_range=holes_per_polygon_range, points_per_hole_range=points_per_hole_range)
@@ -45,7 +45,7 @@ def generate_data(data_dir = "data/", image_size = 512, num_plates = 1, start_pl
             condition_dir = os.path.join(plate_dir, str(condition_index + 1))
             verify_directory(condition_dir)
 
-            analyzer = FEAnalysis('part.mesh', data_dir, condition_dir, conditions[condition_index]['point_forces'], conditions[condition_index]['edge_forces'], conditions[condition_index]['point_constraints'], conditions[condition_index]['edge_constraints'], youngs_modulus=210000, poisson_ratio=0.3)
+            analyzer = FEAnalysis('part.mesh', data_dir, condition_dir, conditions[condition_index]['point_forces'], conditions[condition_index]['edge_forces'], conditions[condition_index]['point_constraints'], conditions[condition_index]['edge_constraints'], youngs_modulus=210000, poisson_ratio=0.3, num_steps=num_steps_per_condition)
 
             analyzer.calculate()
 

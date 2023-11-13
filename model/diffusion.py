@@ -297,7 +297,7 @@ class Trainer():
                     images.append(self.create_view_friendly_image(output[i][j]))
             return images, loss
             
-    def train(self):
+    def train(self, inject_function: function = None):
         print('Epoch Size: {} effective batches'.format((len(self.train_dataloader)/(self.num_gradient_accumulation_steps))))
         print('Number of Effective Epochs: {}'.format(self.num_train_steps/(len(self.train_dataloader)/(self.num_gradient_accumulation_steps))))
         with tqdm(initial = self.step, total = self.num_train_steps, disable = not self.accelerator.is_main_process) as progress_bar:
@@ -330,28 +330,32 @@ class Trainer():
                 self.step += 1
 
                 if self.accelerator.is_main_process:
+                    
                     self.ema.update()
+                    total_sample_loss = None
                     if self.step != 0 and self.step % self.num_steps_per_milestone == 0:
                         self.ema.ema_model.eval()
                         
                         with torch.inference_mode():
                             milestone = self.step // self.num_steps_per_milestone
-                            loss = 0.0
+                            total_sample_loss = 0.0
                             num_batches = 0
                             sampled_images: List[Image.Image] = []
                             for batch in self.sample_dataloader:
                                 sampled_batch, batch_loss = self.sample(batch, use_ema_model=True)
                                 sampled_images += sampled_batch
-                                loss += batch_loss
+                                total_sample_loss += batch_loss
                                 num_batches += 1
-                            loss /= num_batches
+                            total_sample_loss /= num_batches
                             # self.accelerator.print(f'sample loss: {loss:.4f}')
-                            logging.info(f'sample loss: {loss:.4f}')
+                            logging.info(f'sample loss: {total_sample_loss:.4f}')
                             for i, image in enumerate(sampled_images):
                                 image.save(str(self.results_folder / f'sample-{i}.png'))
-                            
                         self.save_checkpoint(milestone)
 
+                    if exists(inject_function):
+                        inject_function(self.step, total_loss, total_sample_loss)
+                        
                 progress_bar.update(1)
                 
         self.accelerator.wait_for_everyone()

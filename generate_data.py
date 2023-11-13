@@ -5,6 +5,7 @@ parser = argparse.ArgumentParser(description='Generate data for training.')
 parser.add_argument('--num_plates', type=int, default=1, help='Number of plates to generate.')
 parser.add_argument('--start_plate', type=int, default=None, help='Plate index to start generating from.')
 parser.add_argument('--conditions_per_plate', type=int, default=4, help='Number of conditions to generate per plate.')
+parser.add_argument('--steps_per_condition', type=int, default=11, help='Number of steps to generate per condition.')
 parser.add_argument('--mesh_size', type=int, default=1e-2, help='Mesh size.')
 parser.add_argument('--image_size', type=int, default=512, help='Image size.')
 parser.add_argument('--save_displacement', action='store_true', help='Save displacement images.')
@@ -24,7 +25,8 @@ generate_data(
     mesh_size=args.mesh_size,
     save_displacement=args.save_displacement,
     save_strain=args.save_strain,
-    save_stress=args.save_stress
+    save_stress=args.save_stress,
+    num_steps_per_condition=args.steps_per_condition
 )
 
 # generate_data(
