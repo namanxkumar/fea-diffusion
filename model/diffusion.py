@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from tqdm.auto import tqdm
+from tqdm.autonotebook import tqdm
 
 import torch
 from torch import nn, Tensor
