@@ -8,3 +8,4 @@ part.*
 regions.*
 domain.*
 box.*
+wandb/

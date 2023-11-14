@@ -3,6 +3,8 @@ from model.unet import UNet
 
 import argparse
 
+import wandb
+
 parser = argparse.ArgumentParser(description='Train model.')
 
 parser.add_argument('--data_dir', type=str, default='data', help='Data directory.')
@@ -16,8 +18,23 @@ parser.add_argument('--num_steps', type=int, default=100, help='Number of steps.
 parser.add_argument('--num_steps_per_milestone', type=int, default=1000, help='Number of steps per milestone.')
 parser.add_argument('--ema_steps_per_milestone', type=int, default=10, help='EMA steps per milestone.')
 parser.add_argument('--learning_rate', type=float, default=1e-4, help='Learning rate.')
+parser.add_argument('--checkpoint', type=str, default=None, help='Checkpoint to load from (should be in results folder).')
 
 args = parser.parse_args()
+
+wandb.init(
+    # set the wandb project where this run will be logged
+    project="fea-diffusion",
+)
+wandb.define_metric("step")
+wandb.define_metric("train_loss", step_metric="step")
+wandb.define_metric("sample_loss", step_metric="step")
+
+def inject_function(step, loss, sample_loss, sampled_images):
+    if sample_loss is not None and sampled_images is not None:
+        wandb.log({'step': step, 'train_loss': loss, 'sample_loss': sample_loss, 'samples': [wandb.Image(image) for image in sampled_images]})
+    else:
+        wandb.log({'step': step, 'train_loss': loss})
 
 model = UNet(
     input_dim=64,
@@ -42,4 +59,7 @@ trainer = Trainer(
     use_batch_split_over_devices=True,
 )
 
-trainer.train()
+if args.checkpoint is not None:
+    trainer.load_checkpoint(args.checkpoint)
+
+trainer.train(wandb_inject_function=inject_function)

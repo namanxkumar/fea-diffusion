@@ -131,7 +131,7 @@ class FEADataset(Dataset):
         for path in condition_path.iterdir():
             if path.match("*Constraint*"):
                 constraints.append(transform(Image.open(path)))
-        sample['constraints'] = self.normalize_to_negative_one_to_one(torch.clamp(torch.sum(torch.stack(constraints, dim = 0), dim = 0), min=0, max=1.0))
+        sample['constraints'] = self.normalize_to_negative_one_to_one(torch.clamp(255*torch.sum(torch.stack(constraints, dim = 0), dim = 0), min=0, max=1.0))
 
         with open(self.path / f'{plate_index}' / f'{condition_index}' / f'magnitudes.txt', 'r') as f:
             magnitudes = list(map(lambda x: tuple(x.strip().split(':')), f.readlines()))
@@ -141,7 +141,8 @@ class FEADataset(Dataset):
         for name, values in magnitudes:
             values = eval(values)
             force_tensor = transform(Image.open(self.path / f'{plate_index}' / f'{condition_index}' / f'regions_{name}.{self.extension}'))
-            normalized_magnitude = tuple(map(lambda value: np.sign(value) * ((float(abs(value)) - self.min_max_magnitude[0]) / (self.min_max_magnitude[1] - self.min_max_magnitude[0])), values))
+            force_tensor = torch.clamp(255*force_tensor, min=0, max=1.0)
+            normalized_magnitude = tuple(map(lambda value: np.sign(value) * ((float(abs(value)) - self.min_max_magnitude[0]) / (self.min_max_magnitude[1] - self.min_max_magnitude[0])) * (step_index/self.num_steps), values))
             forces.append(torch.cat((force_tensor * normalized_magnitude[0], force_tensor * normalized_magnitude[1]), dim = 0))
 
         # Combine all forces into one tensor
