@@ -250,12 +250,12 @@ class Trainer():
     def device(self):
         return self.accelerator.device
     
-    def old_save_checkpoint(self, milestone):
+    def old_save_checkpoint(self, milestone, old_step = True):
         if not self.accelerator.is_local_main_process:
             return
         
         checkpoint = {
-            'step': self.step.state_dict,
+            'step': self.step if old_step else self.step.state_dict,
             'model': self.accelerator.get_state_dict(self.model),
             'optimizer': self.optimizer.state_dict(),
             'ema': self.ema.state_dict(),
@@ -266,7 +266,7 @@ class Trainer():
     def save_checkpoint(self, milestone):
         self.accelerator.save_state(self.results_folder / f'model-{milestone}.pt')
 
-    def old_load_checkpoint(self, milestone: int):
+    def old_load_checkpoint(self, milestone: int, old_step = True):
         accelerator = self.accelerator
         device = accelerator.device
 
@@ -275,7 +275,10 @@ class Trainer():
         model: nn.Module = self.accelerator.unwrap_model(self.model)
         model.load_state_dict(checkpoint['model'])
 
-        self.step.load_state_dict(checkpoint['step'])
+        if old_step:
+            self.step.step = checkpoint['step']
+        else:
+            self.step.load_state_dict(checkpoint['step'])
         self.step.gradient_accumulation_steps = self.num_gradient_accumulation_steps
         self.optimizer.load_state_dict(checkpoint['optimizer'])
 
