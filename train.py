@@ -38,7 +38,7 @@ def inject_function(step, loss, sample_loss, sampled_images):
 
 model = UNet(
     input_dim=64,
-    num_channels=2, # geometry/displacement (2)
+    num_channels=2, # displacement (2)
     num_condition_channels=4, # constraints (1) + force (2) + geometry (1)
 )
 

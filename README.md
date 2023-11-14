@@ -16,6 +16,10 @@
   ```
 - Install torch and other dependencies via pip
   ```sh
-  pip install torch torchvision einops tqdm accelerate ema_pytorch jaxlib
+  pip install torch torchvision einops tqdm accelerate ema_pytorch jaxlib wandb
+  ```
+- Login to wandb via
+  ```sh
+  wandb login
   ```
 - Run [main.py](main.py)!
