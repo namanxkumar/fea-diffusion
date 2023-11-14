@@ -150,6 +150,22 @@ class FEADataset(Dataset):
         
         return sample
 
+class Step():
+    def __init__(self, step: int, gradient_accumulation_steps: int):
+        self.step = step
+        self.gradient_accumulation_steps = gradient_accumulation_steps
+
+    def load_state_dict(self, state_dict: dict):
+        self.step = state_dict['step']
+        self.gradient_accumulation_steps = state_dict['gradient_accumulation_steps']
+
+    def state_dict(self):
+        state_dict = {
+            'step': self.step,
+            'gradient_accumulation_steps': self.gradient_accumulation_steps,
+        }
+        return state_dict
+
 class Trainer():
     def __init__(
             self,
@@ -218,22 +234,28 @@ class Trainer():
         log_name = 'train-e{}-b{}-lr{}-{}.log'.format(num_train_steps, train_batch_size, str(train_learning_rate)[2:], datetime.now().strftime("%Y-%m-%d-%H-%M-%S"))
         logging.basicConfig(filename=(self.results_folder / log_name), level=logging.INFO, format='%(asctime)s %(message)s', force=True)
 
-        self.step = 0
+        self.step = Step(0, num_gradient_accumulation_steps)
 
         # Prepare mode, optimizer, dataloader with accelerator
         self.model, self.optimizer, self.train_dataloader, self.sample_dataloader = self.accelerator.prepare(self.model, self.optimizer, self.train_dataloader, self.sample_dataloader)
+
+        self.accelerator.register_for_checkpointing(self.ema)
+        self.accelerator.register_for_checkpointing(self.step)
+
+        self.skipped_dataloader = None
+
         self.train_yielder = self.yield_data(self.train_dataloader)
 
     @property
     def device(self):
         return self.accelerator.device
     
-    def save_checkpoint(self, milestone):
+    def old_save_checkpoint(self, milestone):
         if not self.accelerator.is_local_main_process:
             return
         
         checkpoint = {
-            'step': self.step,
+            'step': self.step.state_dict,
             'model': self.accelerator.get_state_dict(self.model),
             'optimizer': self.optimizer.state_dict(),
             'ema': self.ema.state_dict(),
@@ -241,7 +263,10 @@ class Trainer():
 
         torch.save(checkpoint, str(self.results_folder / f'model-{milestone}.pt'))
 
-    def load_checkpoint(self, milestone: int):
+    def save_checkpoint(self, milestone):
+        self.accelerator.save_state(self.results_folder / f'model-{milestone}.pt')
+
+    def old_load_checkpoint(self, milestone: int):
         accelerator = self.accelerator
         device = accelerator.device
 
@@ -250,17 +275,27 @@ class Trainer():
         model: nn.Module = self.accelerator.unwrap_model(self.model)
         model.load_state_dict(checkpoint['model'])
 
-        self.step = checkpoint['step']
+        self.step.load_state_dict(checkpoint['step'])
+        self.step.gradient_accumulation_steps = self.num_gradient_accumulation_steps
         self.optimizer.load_state_dict(checkpoint['optimizer'])
 
         if self.accelerator.is_main_process:
             self.ema.load_state_dict(checkpoint['ema'])
 
+    def load_checkpoint(self, milestone: int):
+        self.accelerator.load_state(self.results_folder / f'model-{milestone}.pt')
+        self.skipped_dataloader = self.accelerator.skip_first_batches(self.train_dataloader, self.step.gradient_accumulation_steps * self.step.step)
+        self.train_yielder = self.yield_data(self.train_dataloader, self.skipped_dataloader)
+        self.step.gradient_accumulation_steps = self.num_gradient_accumulation_steps
+
     def calculate_losses(self, sampled_iteration: Tensor, groundtruth_iteration: Tensor) -> Tensor:
         return F.mse_loss(sampled_iteration, groundtruth_iteration)
 
     @staticmethod
-    def yield_data(dataloader) -> Dict[str, Tensor]:
+    def yield_data(dataloader, skipped_dataloader = None) -> Dict[str, Tensor]:
+        if exists(skipped_dataloader):
+            for data in skipped_dataloader:
+                yield data
         while True:
             for data in dataloader:
                 yield data
@@ -301,8 +336,8 @@ class Trainer():
     def train(self, wandb_inject_function = None):
         print('Epoch Size: {} effective batches'.format((len(self.train_dataloader)/(self.num_gradient_accumulation_steps))))
         print('Number of Effective Epochs: {}'.format(self.num_train_steps/(len(self.train_dataloader)/(self.num_gradient_accumulation_steps))))
-        with tqdm(initial = self.step, total = self.num_train_steps, disable = not self.accelerator.is_main_process) as progress_bar:
-            while self.step < self.num_train_steps:
+        with tqdm(initial = self.step.step, total = self.num_train_steps, disable = not self.accelerator.is_main_process) as progress_bar:
+            while self.step.step < self.num_train_steps:
                 total_loss = 0.0
                 # with tqdm(initial = 0, total = self.num_gradient_accumulation_steps, disable = not self.accelerator.is_main_process, leave=False) as inner_progress_bar:
                 for _ in range(self.num_gradient_accumulation_steps):
@@ -318,7 +353,7 @@ class Trainer():
 
                 progress_bar.set_description(f'loss: {total_loss:.4f} ')
                 
-                logging.info(f'step: {self.step}, loss: {total_loss:.4f}')
+                logging.info(f'step: {self.step.step}, loss: {total_loss:.4f}')
 
                 self.accelerator.wait_for_everyone()
                 self.accelerator.clip_grad_norm_(self.model.parameters(), self.max_gradient_norm) # Gradient clipping
@@ -328,18 +363,18 @@ class Trainer():
 
                 self.accelerator.wait_for_everyone()
 
-                self.step += 1
+                self.step.step += 1
 
                 if self.accelerator.is_main_process:
                     
                     self.ema.update()
                     total_sample_loss = None
                     sampled_images = None
-                    if self.step != 0 and self.step % self.num_steps_per_milestone == 0:
+                    if self.step.step != 0 and self.step.step % self.num_steps_per_milestone == 0:
                         self.ema.ema_model.eval()
                         
                         with torch.inference_mode():
-                            milestone = self.step // self.num_steps_per_milestone
+                            milestone = self.step.step // self.num_steps_per_milestone
                             total_sample_loss = 0.0
                             num_batches = 0
                             sampled_images: List[Image.Image] = []
@@ -356,7 +391,7 @@ class Trainer():
                         self.save_checkpoint(milestone)
 
                     if exists(wandb_inject_function):
-                        wandb_inject_function(self.step, total_loss, total_sample_loss, sampled_images)
+                        wandb_inject_function(self.step.step, total_loss, total_sample_loss, sampled_images)
                         
                 progress_bar.update(1)
                 
