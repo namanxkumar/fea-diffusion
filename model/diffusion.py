@@ -264,13 +264,13 @@ class Trainer():
         torch.save(checkpoint, str(self.results_folder / f'model-{milestone}.pt'))
 
     def save_checkpoint(self, milestone):
-        self.accelerator.save_state(self.results_folder / f'model-{milestone}.pt')
+        self.accelerator.save_state(self.results_folder / f'model-{milestone}')
 
     def old_load_checkpoint(self, milestone: int, old_step = True):
         accelerator = self.accelerator
         device = accelerator.device
 
-        checkpoint = torch.load(str(self.results_folder / f'model-{milestone}'), map_location=device)
+        checkpoint = torch.load(str(self.results_folder / f'model-{milestone}.pt'), map_location=device)
 
         model: nn.Module = self.accelerator.unwrap_model(self.model)
         model.load_state_dict(checkpoint['model'])
@@ -286,7 +286,7 @@ class Trainer():
             self.ema.load_state_dict(checkpoint['ema'])
 
     def load_checkpoint(self, milestone: int):
-        self.accelerator.load_state(self.results_folder / f'model-{milestone}.pt')
+        self.accelerator.load_state(self.results_folder / f'model-{milestone}')
         self.skipped_dataloader = self.accelerator.skip_first_batches(self.train_dataloader, self.step.gradient_accumulation_steps * self.step.step)
         self.train_yielder = self.yield_data(self.train_dataloader, self.skipped_dataloader)
         self.step.gradient_accumulation_steps = self.num_gradient_accumulation_steps
