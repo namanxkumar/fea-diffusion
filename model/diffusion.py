@@ -2,6 +2,8 @@ from pathlib import Path
 
 from tqdm.autonotebook import tqdm
 
+from .fdnunet import FDNUNet
+
 import torch
 from torch import nn, Tensor
 from torch.optim import Adam
@@ -317,10 +319,16 @@ class Trainer():
         return image
 
     def sample_model(self, sample: Dict[str, Tensor], use_ema_model: bool = False) -> Tensor:
-        conditions = torch.cat((sample['forces'], sample['constraints'], sample['geometry']), dim = 1).to(self.device)
+        if type(self.model) == FDNUNet:
+            conditions = torch.cat((sample['forces'], sample['constraints']), dim = 1).to(self.device)
+        else:
+            conditions = torch.cat((sample['forces'], sample['constraints'], sample['geometry']), dim = 1).to(self.device)
         previous_iteration = sample['previous_iteration'].to(self.device)
         iteration_index = sample['iteration_index'].to(self.device)
-        prediction = self.model(previous_iteration, iteration_index, conditions) if not use_ema_model else self.ema.ema_model(previous_iteration, iteration_index, conditions)
+        if type(self.model) == FDNUNet:
+            prediction = self.model(previous_iteration, iteration_index, conditions, sample['geometry'])
+        else:
+            prediction = self.model(previous_iteration, iteration_index, conditions) if not use_ema_model else self.ema.ema_model(previous_iteration, iteration_index, conditions)
 
         masked_prediction = prediction * (1.0 - self.unnormalize_from_negative_one_to_one(sample['constraints'])) # Mask out the regions that are constrained
         masked_prediction = masked_prediction * self.unnormalize_from_negative_one_to_one(sample['geometry']) # Mask out the regions that are not part of the geometry
