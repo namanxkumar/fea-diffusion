@@ -12,6 +12,8 @@ import torch.nn.functional as F
 import torchvision.transforms as transforms
 import torchvision.transforms.functional as TF
 
+from zipfile import ZipFile
+
 import numpy as np
 
 from accelerate import Accelerator
@@ -268,6 +270,11 @@ class Trainer():
     def save_checkpoint(self, milestone):
         self.accelerator.save_state(self.results_folder / f'model-{milestone}')
 
+        with ZipFile(self.results_folder / f'model-{milestone}.zip', 'w') as zip:
+            path = self.results_folder / f'model-{milestone}'
+            for file in path.iterdir():
+                zip.write(file, arcname=file.relative_to(self.results_folder))
+
     def old_load_checkpoint(self, milestone: int, old_step = True):
         accelerator = self.accelerator
         device = accelerator.device
@@ -381,6 +388,7 @@ class Trainer():
                     self.ema.update()
                     total_sample_loss = None
                     sampled_images = None
+                    milestone = None
                     if self.step.step != 0 and self.step.step % self.num_steps_per_milestone == 0:
                         self.ema.ema_model.eval()
                         
@@ -402,7 +410,7 @@ class Trainer():
                         self.save_checkpoint(milestone)
 
                     if exists(wandb_inject_function):
-                        wandb_inject_function(self.step.step, total_loss, total_sample_loss, sampled_images)
+                        wandb_inject_function(self.step.step, total_loss, total_sample_loss, sampled_images, milestone)
                         
                 progress_bar.update(1)
                 

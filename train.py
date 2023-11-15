@@ -1,9 +1,12 @@
 from model.diffusion import Trainer
 from model.unet import UNet
+from model.fdnunet import FDNUNet
 
 import argparse
 
 import wandb
+
+from pathlib import Path
 
 parser = argparse.ArgumentParser(description='Train model.')
 
@@ -14,32 +17,46 @@ parser.add_argument('--results_dir', type=str, default='results', help='Results 
 parser.add_argument('--image_size', type=int, default=256, help='Image size.')
 parser.add_argument('--batch_size', type=int, default=16, help='Batch size.')
 parser.add_argument('--num_gradient_accumulation_steps', type=int, default=1, help='Number of gradient accumulation steps.')
-parser.add_argument('--num_steps', type=int, default=100, help='Number of steps.')
-parser.add_argument('--num_steps_per_milestone', type=int, default=1000, help='Number of steps per milestone.')
+parser.add_argument('--num_steps', type=int, default=10000, help='Number of steps.')
+parser.add_argument('--num_steps_per_milestone', type=int, default=500, help='Number of steps per milestone.')
 parser.add_argument('--ema_steps_per_milestone', type=int, default=10, help='EMA steps per milestone.')
-parser.add_argument('--learning_rate', type=float, default=1e-4, help='Learning rate.')
+parser.add_argument('--learning_rate', type=float, default=3e-4, help='Learning rate.')
 parser.add_argument('--checkpoint', type=str, default=None, help='Checkpoint to load from (should be in results folder).')
 
 args = parser.parse_args()
 
-wandb.init(
+# Step
+#   - 2 * 6 = 16
+
+run = wandb.init(
     # set the wandb project where this run will be logged
-    project="fea-diffusion",
+    project="fea-diffusion2",
 )
 wandb.define_metric("step")
 wandb.define_metric("train_loss", step_metric="step")
 wandb.define_metric("sample_loss", step_metric="step")
+artifact = wandb.Artifact(name='checkpoint', type='model')
 
-def inject_function(step, loss, sample_loss, sampled_images):
-    if sample_loss is not None and sampled_images is not None:
+def inject_function(step, loss, sample_loss, sampled_images, milestone):
+    if sample_loss is not None and sampled_images is not None and milestone is not None:
+        artifact.add_file(Path(args.results_dir) / f'model-{milestone}.zip')
+        run.log_artifact(artifact)
         wandb.log({'step': step, 'train_loss': loss, 'sample_loss': sample_loss, 'samples': [wandb.Image(image) for image in sampled_images]})
     else:
         wandb.log({'step': step, 'train_loss': loss})
 
-model = UNet(
+# model = UNet(
+#     input_dim=64,
+#     num_channels=2, # displacement (2)
+#     num_condition_channels=4, # constraints (1) + force (2) + geometry (1)
+# )
+
+model = FDNUNet(
     input_dim=64,
-    num_channels=2, # displacement (2)
-    num_condition_channels=4, # constraints (1) + force (2) + geometry (1)
+    num_channels=2, # geometry/displacement (2)
+    num_condition_channels=1, # geometry (1)
+    num_auxiliary_condition_channels=3, # constraints (1) + force (2)
+    num_stages=4
 )
 
 trainer = Trainer(
