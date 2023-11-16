@@ -62,7 +62,7 @@ model = FDNUNet(
 trainer = Trainer(
     model=model,
     dataset_folder=args.data_dir,
-    use_dataset_augmentation=True,
+    use_dataset_augmentation=False,
     sample_dataset_folder=args.sample_data_dir,
     num_sample_conditions_per_plate=args.num_sample_conditions_per_plate,
     num_gradient_accumulation_steps=args.num_gradient_accumulation_steps,
@@ -73,7 +73,6 @@ trainer = Trainer(
     num_steps_per_milestone=args.num_steps_per_milestone,
     ema_steps_per_milestone=args.ema_steps_per_milestone,
     results_folder=args.results_dir,
-    use_batch_split_over_devices=True,
 )
 
 if args.checkpoint is not None:
