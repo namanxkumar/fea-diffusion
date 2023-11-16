@@ -155,18 +155,21 @@ class FEADataset(Dataset):
         return sample
 
 class Step():
-    def __init__(self, step: int, gradient_accumulation_steps: int):
+    def __init__(self, step: int, gradient_accumulation_steps: int, batch_size: int):
         self.step = step
         self.gradient_accumulation_steps = gradient_accumulation_steps
+        self.batch_size = batch_size
 
     def load_state_dict(self, state_dict: dict):
         self.step = state_dict['step']
         self.gradient_accumulation_steps = state_dict['gradient_accumulation_steps']
+        self.batch_size = state_dict['batch_size']
 
     def state_dict(self):
         state_dict = {
             'step': self.step,
             'gradient_accumulation_steps': self.gradient_accumulation_steps,
+            'batch_size': self.batch_size,
         }
         return state_dict
 
@@ -238,7 +241,7 @@ class Trainer():
         log_name = 'train-e{}-b{}-lr{}-{}.log'.format(num_train_steps, train_batch_size, str(train_learning_rate)[2:], datetime.now().strftime("%Y-%m-%d-%H-%M-%S"))
         logging.basicConfig(filename=(self.results_folder / log_name), level=logging.INFO, format='%(asctime)s %(message)s', force=True)
 
-        self.step = Step(0, num_gradient_accumulation_steps)
+        self.step = Step(0, num_gradient_accumulation_steps, train_batch_size)
 
         # Prepare mode, optimizer, dataloader with accelerator
         self.model, self.optimizer, self.train_dataloader, self.sample_dataloader = self.accelerator.prepare(self.model, self.optimizer, self.train_dataloader, self.sample_dataloader)
@@ -274,6 +277,11 @@ class Trainer():
             path = self.results_folder / f'model-{milestone}'
             for file in path.iterdir():
                 zip.write(file, arcname=file.relative_to(self.results_folder))
+        
+        # Delete the folder
+        for file in path.iterdir():
+            file.unlink()
+        path.rmdir()
 
     def old_load_checkpoint(self, milestone: int, old_step = True):
         accelerator = self.accelerator
@@ -294,11 +302,17 @@ class Trainer():
         if self.accelerator.is_main_process:
             self.ema.load_state_dict(checkpoint['ema'])
 
+    def unzip_checkpoint(self, milestone: int):
+        with ZipFile(self.results_folder / f'model-{milestone}.zip', 'r') as zip:
+            zip.extractall(self.results_folder / f'model-{milestone}')
+
     def load_checkpoint(self, milestone: int):
         self.accelerator.load_state(self.results_folder / f'model-{milestone}')
-        self.skipped_dataloader = self.accelerator.skip_first_batches(self.train_dataloader, self.step.gradient_accumulation_steps * self.step.step)
+        num_skips = (self.step.step * self.step.gradient_accumulation_steps * self.step.batch_size) // self.train_batch_size
+        self.skipped_dataloader = self.accelerator.skip_first_batches(self.train_dataloader, num_skips)
         self.train_yielder = self.yield_data(self.train_dataloader, self.skipped_dataloader)
         self.step.gradient_accumulation_steps = self.num_gradient_accumulation_steps
+        self.step.batch_size = self.train_batch_size
 
     def calculate_losses(self, sampled_iteration: Tensor, groundtruth_iteration: Tensor) -> Tensor:
         return F.mse_loss(sampled_iteration, groundtruth_iteration)
