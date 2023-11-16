@@ -163,7 +163,7 @@ class Step():
     def load_state_dict(self, state_dict: dict):
         self.step = state_dict['step']
         self.gradient_accumulation_steps = state_dict['gradient_accumulation_steps']
-        self.batch_size = state_dict['batch_size']
+        self.batch_size = state_dict['batch_size'] if 'batch_size' in state_dict else self.batch_size
 
     def state_dict(self):
         state_dict = {
@@ -306,8 +306,9 @@ class Trainer():
         with ZipFile(self.results_folder / f'model-{milestone}.zip', 'r') as zip:
             zip.extractall(self.results_folder / f'model-{milestone}')
 
-    def load_checkpoint(self, milestone: int):
+    def load_checkpoint(self, milestone: int, override_batch_size: Optional[int] = None):
         self.accelerator.load_state(self.results_folder / f'model-{milestone}')
+        self.step.batch_size = override_batch_size if exists(override_batch_size) else self.step.batch_size
         num_skips = (self.step.step * self.step.gradient_accumulation_steps * self.step.batch_size) // self.train_batch_size
         self.skipped_dataloader = self.accelerator.skip_first_batches(self.train_dataloader, num_skips)
         self.train_yielder = self.yield_data(self.train_dataloader, self.skipped_dataloader)
