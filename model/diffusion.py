@@ -45,6 +45,7 @@ class FEADataset(Dataset):
     def __init__(
             self, 
             folder: str, 
+            lean: bool = False,
             extension: str = 'png', 
             image_size = 256, 
             augmentation: bool = False, 
@@ -69,8 +70,15 @@ class FEADataset(Dataset):
         self.num_steps = num_steps - 1 # 0th index step is not used
 
         self.samples_per_plate = self.conditions_per_plate_geometry * self.num_steps
+        
+        self.lean = lean
 
-        self.total_samples = self.number_of_plate_geometries * self.samples_per_plate
+        self.num_lean_samples = self.number_of_plate_geometries * self.conditions_per_plate_geometry
+
+        if self.lean:
+            self.total_samples = self.num_lean_samples*1.3
+        else:
+            self.total_samples = self.number_of_plate_geometries * self.samples_per_plate
 
         # self.displacement = displacement
         # self.strain = strain
@@ -87,9 +95,20 @@ class FEADataset(Dataset):
         return self.total_samples
     
     def __getitem__(self, index: int) -> Dict[str, Tensor]:
-        plate_index = (index // (self.samples_per_plate)) + 1
-        condition_index = (index % (self.samples_per_plate)) // self.num_steps + 1
-        step_index = (index % (self.samples_per_plate)) % self.num_steps + 1
+        if self.lean:
+            if index < self.num_lean_samples:
+                plate_index = (index // (self.conditions_per_plate_geometry)) + 1
+                condition_index = (index % (self.conditions_per_plate_geometry)) + 1
+                step_index = 1
+            elif index >= self.num_lean_samples:
+                new_index = index - self.num_lean_samples
+                plate_index = (new_index // (self.samples_per_plate)) + 1
+                condition_index = (new_index % (self.samples_per_plate)) // self.num_steps + 1
+                step_index = (new_index % (self.samples_per_plate)) % self.num_steps + 1
+        else:
+            plate_index = (index // (self.samples_per_plate)) + 1
+            condition_index = (index % (self.samples_per_plate)) // self.num_steps + 1
+            step_index = (index % (self.samples_per_plate)) % self.num_steps + 1
 
         transform = transforms.Compose([
             transforms.Resize((self.image_size, self.image_size)),
@@ -219,12 +238,17 @@ class Trainer():
 
         # Dataset
         self.image_size = dataset_image_size
-        self.dataset = FEADataset(dataset_folder, image_size=dataset_image_size, augmentation=use_dataset_augmentation)
+        self.dataset = FEADataset(dataset_folder, image_size=dataset_image_size, augmentation=use_dataset_augmentation, lean=True)
         self.sample_dataset = FEADataset(sample_dataset_folder, image_size=dataset_image_size, augmentation=False, conditions_per_plate=num_sample_conditions_per_plate)
         self.num_samples = len(self.sample_dataset)
 
         assert len(self.dataset) >= 100, 'you should have at least 100 samples in your folder. at least 10k images recommended'
 
+        # train dataloader contains all the lean_dataset samples and only 50% of the len(lean_dataset) samples from the dataset
+        # sample dataloader contains all the samples from the sample_dataset
+
+        # self.train_dataloader = DataLoader(self.dataset, batch_size=self.train_batch_size, shuffle=True, num_workers=0, pin_memory=True)
+        
         self.train_dataloader = DataLoader(self.dataset, batch_size=self.train_batch_size, shuffle=True, num_workers=0, pin_memory=True)
         self.sample_dataloader = DataLoader(self.sample_dataset, batch_size=self.sample_batch_size, shuffle=False, num_workers=0, pin_memory=True)
 
@@ -337,7 +361,7 @@ class Trainer():
     def normalize_to_negative_one_to_one(tensor: Tensor) -> Tensor:
         return (tensor * 2.0) - 1.0
 
-    def create_view_friendly_image(self, image: Tensor) -> Image.Image:
+    def create_view_friendly_image(self, image: Tensor) -> Tensor:
         image = image[None, ...]
         image = self.unnormalize_from_negative_one_to_one(image)
         # image = TF.invert(image)
@@ -358,12 +382,13 @@ class Trainer():
             prediction = self.model(previous_iteration, iteration_index, conditions, sample['geometry'])
         else:
             prediction = self.model(previous_iteration, iteration_index, conditions) if not use_ema_model else self.ema.ema_model(previous_iteration, iteration_index, conditions)
-
+        # sample['geometry'] = sample['geometry'].to(prediction.device)
+        # sample['constraints'] = sample['constraints'].to(prediction.device)
         prediction = self.normalize_to_negative_one_to_one(self.unnormalize_from_negative_one_to_one(prediction) * self.unnormalize_from_negative_one_to_one(sample['geometry'])) # Mask out the regions that are not part of the geometry
-        prediction = prediction * (1.0 - self.unnormalize_from_negative_one_to_one(sample['constraints'])) # Mask out the regions that are constrained
+        # prediction = prediction * (1.0 - self.unnormalize_from_negative_one_to_one(sample['constraints'])) # Mask out the regions that are constrained
         return prediction
 
-    def sample(self, batch, use_ema_model: bool = False) -> Tuple[List[Image.Image], Tensor]:
+    def sample(self, batch, use_ema_model: bool = False) -> Tuple[List[Tensor], Tensor]:
         with torch.inference_mode():
             output = self.sample_model(batch, use_ema_model)
             loss = self.calculate_losses(output, batch['displacement'])
@@ -374,7 +399,7 @@ class Trainer():
             return images, loss
     
     def sample_and_save(self, milestone: Union[int, str] = None, use_ema_model: bool = False):
-        sampled_images: List[Image.Image] = []
+        sampled_images = []
         image_filenames = []
         total_sample_loss = 0.0
         num_batches = 0
@@ -396,7 +421,45 @@ class Trainer():
                 # image.save(str(self.results_folder / f'sample-{i}.png'))
 
         return sampled_images, image_filenames, total_sample_loss
+    
+    def successive_sample_and_save(self, milestone: Union[int, str], use_ema_model: bool = False):
+        # Use model generated samples as input for the next sample
+        # Each output consists of 10 samples, take the 1st sample from the dataset (every 10th sample) and use it to generate 10 outputs
+        # Repeat this process for all samples in the dataset
+        sampled_images = torch.zeros((self.sample_dataset.number_of_plate_geometries, self.sample_dataset.conditions_per_plate_geometry, self.sample_dataset.num_steps, 2, self.sample_dataset.image_size, self.sample_dataset.image_size))
+        image_filenames = []
+        total_sample_loss = 0.0
+        num_samples = 0
+        previous_iteration = None
+        for index in tqdm(range(3)):
+            sample = self.sample_dataset[index]
+            for key in sample:
+                sample[key] = sample[key].unsqueeze(0).to(self.accelerator.device)
+            if sample['iteration_index'].item() <= 2:
+                previous_iteration = sample['previous_iteration']
+            # sample['previous_iteration'] = self.normalize_to_negative_one_to_one(self.unnormalize_from_negative_one_to_one(sample['previous_iteration']) * self.unnormalize_from_negative_one_to_one(sample['geometry']))
+            sample['previous_iteration'] = previous_iteration.to(self.accelerator.device)
+            images, loss = self.sample(sample, use_ema_model)
+            images = torch.cat(tuple(images), dim = 0)
+            sampled_images[sample['plate_index'].item() - 1][sample['condition_index'].item() - 1][sample['iteration_index'].item() - 1] = images
+            previous_iteration = images.unsqueeze(0)
+            total_sample_loss += loss
+            num_samples += 1
+        total_sample_loss /= num_samples
         
+        for i in range(sampled_images.shape[0]):
+            plate_folder = self.results_folder/ f'{milestone}' / f'plate-{i + 1}'
+            plate_folder.mkdir(exist_ok=True, parents=True)
+            for j in range(sampled_images.shape[1]):
+                condition_folder = plate_folder / f'condition-{j + 1}'
+                condition_folder.mkdir(exist_ok=True, parents=True)
+                for k in range(sampled_images.shape[2]):
+                    for l in range(sampled_images.shape[3]):
+                            plt.imsave(str(condition_folder / f'sample-{k + 1}-{l + 1}.png'), torch.squeeze(sampled_images[i][j][k][l]).cpu().detach().numpy(), cmap='Greys', vmin=0, vmax=255)
+                            image_filenames.append(str(condition_folder / f'sample-{k + 1}-{l + 1}.png'))
+
+        return sampled_images.flatten(end_dim=3), image_filenames, total_sample_loss
+
     def train(self, wandb_inject_function = None):
         print('Epoch Size: {} effective batches'.format((len(self.train_dataloader)/(self.num_gradient_accumulation_steps))))
         print('Number of Effective Epochs: {}'.format(self.num_train_steps/(len(self.train_dataloader)/(self.num_gradient_accumulation_steps))))
@@ -433,7 +496,6 @@ class Trainer():
                     
                     self.ema.update()
                     total_sample_loss = None
-                    sampled_images = None
                     image_filenames = None
                     milestone = None
 
@@ -442,7 +504,7 @@ class Trainer():
                         
                         with torch.inference_mode():
                             milestone = self.step.step // self.num_steps_per_milestone
-                            sampled_images, image_filenames, total_sample_loss = self.sample_and_save(use_ema_model=True)
+                            _, image_filenames, total_sample_loss = self.sample_and_save(use_ema_model=True)
                             logging.info(f'sample loss: {total_sample_loss:.4f}')
                         self.save_checkpoint(milestone)
 
