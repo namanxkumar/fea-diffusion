@@ -35,13 +35,16 @@ run = wandb.init(
 wandb.define_metric("step")
 wandb.define_metric("train_loss", step_metric="step")
 wandb.define_metric("sample_loss", step_metric="step")
-artifact = wandb.Artifact(name='checkpoint', type='model')
+
+
 
 def inject_function(step, loss, sample_loss, sampled_images, milestone):
     if sample_loss is not None and sampled_images is not None and milestone is not None:
-        artifact.add_file(Path(args.results_dir) / f'model-{milestone}.zip')
-        run.log_artifact(artifact)
+        artifact = wandb.Artifact(name=f'checkpoint-{wandb.run.id}', type='model')
         wandb.log({'step': step, 'train_loss': loss, 'sample_loss': sample_loss, 'samples': [wandb.Image(image) for image in sampled_images]})
+        artifact.add_file(Path(args.results_dir) / f'model-{milestone}.zip')
+        wandb.log_artifact(artifact)
+        
     else:
         wandb.log({'step': step, 'train_loss': loss})
 
@@ -79,3 +82,4 @@ if args.checkpoint is not None:
     trainer.load_checkpoint(args.checkpoint)
 
 trainer.train(wandb_inject_function=inject_function)
+wandb.finish()
