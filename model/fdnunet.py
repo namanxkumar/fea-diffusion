@@ -115,14 +115,14 @@ class ConditionFeatureExtractor(nn.Module):
 
         self.extractors = nn.ModuleList([
             nn.Sequential(
-                nn.Conv2d(128, stagewise_input_to_output_dims[0][0]//2, kernel_size=3, padding=1),
+                nn.Conv2d(128, stagewise_input_to_output_dims[0][0], kernel_size=3, padding=1),
                 nn.SiLU(),
             ),
         ])
 
         for index, (input_dim, output_dim) in enumerate(stagewise_input_to_output_dims):
             module = nn.Sequential(
-                (nn.Conv2d(input_dim//2, output_dim//2, kernel_size = 3, padding = 1) if (index == len(stagewise_input_to_output_dims) - 1) else Downsample(input_dim//2, output_dim//2)),
+                (nn.Conv2d(input_dim, output_dim, kernel_size = 3, padding = 1) if (index == len(stagewise_input_to_output_dims) - 1) else Downsample(input_dim, output_dim)),
                 nn.SiLU(),
             )
             self.extractors.append(module)
@@ -354,17 +354,17 @@ class FDNUNet(nn.Module):
             downsample_module = Downsample if not is_last else partial(nn.Conv2d, kernel_size = 3, padding = 1)
 
             self.down_layers.append(nn.ModuleList([
-                resnet_module(input_dim, input_dim, input_dim//2),
-                resnet_module(input_dim, input_dim, input_dim//2),
+                resnet_module(input_dim, input_dim, input_dim),
+                resnet_module(input_dim, input_dim, input_dim),
                 attention_module(input_dim, num_heads = num_attention_heads, head_dim = attention_head_dim),
                 downsample_module(input_dim, output_dim)
             ]))
 
         # Define Middle Block
         middle_dim = stagewise_dimensions[-1]
-        self.middle_block_1 = resnet_module(middle_dim, middle_dim, middle_dim//2)
+        self.middle_block_1 = resnet_module(middle_dim, middle_dim, middle_dim)
         self.middle_attention = full_attention_module(middle_dim, num_heads = stagewise_num_attention_heads[-1], head_dim = stagewise_attention_head_dim[-1])
-        self.middle_block_2 = resnet_module(middle_dim, middle_dim, middle_dim//2)
+        self.middle_block_2 = resnet_module(middle_dim, middle_dim, middle_dim)
 
         # Define Upsampling Layers
         for index, ((input_dim, output_dim), use_full_attention, num_attention_heads, attention_head_dim) in enumerate(zip(*map(reversed, (stagewise_input_to_output_dims, stagewise_use_full_attention, stagewise_num_attention_heads, stagewise_attention_head_dim)))):
@@ -374,8 +374,8 @@ class FDNUNet(nn.Module):
             upsample_module = Upsample if not is_last else partial(nn.Conv2d, kernel_size = 3, padding = 1)
 
             self.up_layers.append(nn.ModuleList([
-                resnet_module(output_dim + input_dim, output_dim, input_dim//2),
-                resnet_module(output_dim + input_dim, output_dim, input_dim//2),
+                resnet_module(output_dim + input_dim, output_dim, input_dim),
+                resnet_module(output_dim + input_dim, output_dim, input_dim),
                 attention_module(output_dim, num_heads = num_attention_heads, head_dim = attention_head_dim),
                 upsample_module(output_dim, input_dim)
             ]))
@@ -383,7 +383,7 @@ class FDNUNet(nn.Module):
         # Define Output Layer
         self.final_dim = final_dim if exists(final_dim) else num_channels
 
-        self.final_resnet_block = resnet_module(input_dim*2, input_dim, input_dim//2)
+        self.final_resnet_block = resnet_module(input_dim*2, input_dim, input_dim)
         self.final_convolution = nn.Conv2d(input_dim, self.final_dim, 1)
 
     @property

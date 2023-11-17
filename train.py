@@ -25,23 +25,18 @@ parser.add_argument('--checkpoint', type=str, default=None, help='Checkpoint to 
 
 args = parser.parse_args()
 
-# Step
-#   - 2 * 6 = 16
-
 run = wandb.init(
     # set the wandb project where this run will be logged
-    project="fea-diffusion2",
+    project="fea-diffusion-model-2",
 )
 wandb.define_metric("step")
 wandb.define_metric("train_loss", step_metric="step")
 wandb.define_metric("sample_loss", step_metric="step")
 
-
-
-def inject_function(step, loss, sample_loss, sampled_images, milestone):
-    if sample_loss is not None and sampled_images is not None and milestone is not None:
+def inject_function(step, loss, sample_loss, image_filenames, milestone):
+    if sample_loss is not None and image_filenames is not None and milestone is not None:
         artifact = wandb.Artifact(name=f'checkpoint-{wandb.run.id}', type='model')
-        wandb.log({'step': step, 'train_loss': loss, 'sample_loss': sample_loss, 'samples': [wandb.Image(image) for image in sampled_images]})
+        wandb.log({'step': step, 'train_loss': loss, 'sample_loss': sample_loss, 'samples': [wandb.Image(image) for image in image_filenames]})
         artifact.add_file(Path(args.results_dir) / f'model-{milestone}.zip')
         wandb.log_artifact(artifact)
         
@@ -65,7 +60,6 @@ model = FDNUNet(
 trainer = Trainer(
     model=model,
     dataset_folder=args.data_dir,
-    use_dataset_augmentation=False,
     sample_dataset_folder=args.sample_data_dir,
     num_sample_conditions_per_plate=args.num_sample_conditions_per_plate,
     num_gradient_accumulation_steps=args.num_gradient_accumulation_steps,

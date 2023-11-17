@@ -375,6 +375,7 @@ class Trainer():
     
     def sample_and_save(self, milestone: Union[int, str] = None, use_ema_model: bool = False):
         sampled_images: List[Image.Image] = []
+        image_filenames = []
         total_sample_loss = 0.0
         num_batches = 0
         for batch in tqdm(self.sample_dataloader):
@@ -387,12 +388,14 @@ class Trainer():
         for i, image in enumerate(sampled_images):
             if exists(milestone):
                 plt.imsave(str(self.results_folder / f'sample-{i}-{milestone}.png'), torch.squeeze(image).cpu().detach().numpy(), cmap='Greys', vmin=0, vmax=255)
+                image_filenames.append(str(self.results_folder / f'sample-{i}-{milestone}.png'))
                 # image.save(str(self.results_folder / f'sample-{i}-{milestone}.png'))
             else:
                 plt.imsave(str(self.results_folder / f'sample-{i}.png'), torch.squeeze(image).cpu().detach().numpy(), cmap='Greys', vmin=0, vmax=255)
+                image_filenames.append(str(self.results_folder / f'sample-{i}.png'))
                 # image.save(str(self.results_folder / f'sample-{i}.png'))
 
-        return sampled_images, total_sample_loss
+        return sampled_images, image_filenames, total_sample_loss
         
     def train(self, wandb_inject_function = None):
         print('Epoch Size: {} effective batches'.format((len(self.train_dataloader)/(self.num_gradient_accumulation_steps))))
@@ -431,6 +434,7 @@ class Trainer():
                     self.ema.update()
                     total_sample_loss = None
                     sampled_images = None
+                    image_filenames = None
                     milestone = None
 
                     if self.step.step != 0 and self.step.step % self.num_steps_per_milestone == 0:
@@ -438,12 +442,12 @@ class Trainer():
                         
                         with torch.inference_mode():
                             milestone = self.step.step // self.num_steps_per_milestone
-                            sampled_images, total_sample_loss = self.sample_and_save(use_ema_model=True)
+                            sampled_images, image_filenames, total_sample_loss = self.sample_and_save(use_ema_model=True)
                             logging.info(f'sample loss: {total_sample_loss:.4f}')
                         self.save_checkpoint(milestone)
 
                     if exists(wandb_inject_function):
-                        wandb_inject_function(self.step.step, total_loss, total_sample_loss, sampled_images, milestone)
+                        wandb_inject_function(self.step.step, total_loss, total_sample_loss, image_filenames, milestone)
                         
                 progress_bar.update(1)
                 
