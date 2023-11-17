@@ -76,7 +76,7 @@ class FEADataset(Dataset):
         self.num_lean_samples = self.number_of_plate_geometries * self.conditions_per_plate_geometry
 
         if self.lean:
-            self.total_samples = self.num_lean_samples*1.3
+            self.total_samples = int(self.num_lean_samples*1.3)
         else:
             self.total_samples = self.number_of_plate_geometries * self.samples_per_plate
 
