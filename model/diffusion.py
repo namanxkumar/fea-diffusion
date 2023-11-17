@@ -76,7 +76,7 @@ class FEADataset(Dataset):
         self.num_lean_samples = self.number_of_plate_geometries * self.conditions_per_plate_geometry
 
         if self.lean:
-            self.total_samples = int(self.num_lean_samples*1.3)
+            self.total_samples = int(self.num_lean_samples)
         else:
             self.total_samples = self.number_of_plate_geometries * self.samples_per_plate
 
@@ -96,15 +96,15 @@ class FEADataset(Dataset):
     
     def __getitem__(self, index: int) -> Dict[str, Tensor]:
         if self.lean:
-            if index < self.num_lean_samples:
-                plate_index = (index // (self.conditions_per_plate_geometry)) + 1
-                condition_index = (index % (self.conditions_per_plate_geometry)) + 1
-                step_index = 1
-            elif index >= self.num_lean_samples:
-                new_index = index - self.num_lean_samples
-                plate_index = (new_index // (self.samples_per_plate)) + 1
-                condition_index = (new_index % (self.samples_per_plate)) // self.num_steps + 1
-                step_index = (new_index % (self.samples_per_plate)) % self.num_steps + 1
+            # if index < self.num_lean_samples:
+            plate_index = (index // (self.conditions_per_plate_geometry)) + 1
+            condition_index = (index % (self.conditions_per_plate_geometry)) + 1
+            step_index = 1
+            # elif index >= self.num_lean_samples:
+            #     new_index = index - self.num_lean_samples
+            #     plate_index = (new_index // (self.samples_per_plate)) + 1
+            #     condition_index = (new_index % (self.samples_per_plate)) // self.num_steps + 1
+            #     step_index = (new_index % (self.samples_per_plate)) % self.num_steps + 1
         else:
             plate_index = (index // (self.samples_per_plate)) + 1
             condition_index = (index % (self.samples_per_plate)) // self.num_steps + 1
@@ -370,6 +370,12 @@ class Trainer():
         # image = TF.to_pil_image(image, mode='F')
         # image = image.convert("RGB")
         return image
+    
+    def reverse_view_friendly_image(self, image: Tensor) -> Tensor:
+        image = image[None, ...]
+        image = image / 255.0
+        image = self.normalize_to_negative_one_to_one(image)
+        return image
 
     def sample_model(self, sample: Dict[str, Tensor], use_ema_model: bool = False) -> Tensor:
         if type(self.model) == FDNUNet:
@@ -385,7 +391,7 @@ class Trainer():
         # sample['geometry'] = sample['geometry'].to(prediction.device)
         # sample['constraints'] = sample['constraints'].to(prediction.device)
         prediction = self.normalize_to_negative_one_to_one(self.unnormalize_from_negative_one_to_one(prediction) * self.unnormalize_from_negative_one_to_one(sample['geometry'])) # Mask out the regions that are not part of the geometry
-        # prediction = prediction * (1.0 - self.unnormalize_from_negative_one_to_one(sample['constraints'])) # Mask out the regions that are constrained
+        prediction = prediction * (1.0 - self.unnormalize_from_negative_one_to_one(sample['constraints'])) # Mask out the regions that are constrained
         return prediction
 
     def sample(self, batch, use_ema_model: bool = False) -> Tuple[List[Tensor], Tensor]:
@@ -440,9 +446,13 @@ class Trainer():
             # sample['previous_iteration'] = self.normalize_to_negative_one_to_one(self.unnormalize_from_negative_one_to_one(sample['previous_iteration']) * self.unnormalize_from_negative_one_to_one(sample['geometry']))
             sample['previous_iteration'] = previous_iteration.to(self.accelerator.device)
             images, loss = self.sample(sample, use_ema_model)
+            images_updated = []
+            for i in range(len(images)):
+                images_updated.append(self.reverse_view_friendly_image(images[i]).squeeze(0))
+            images_updated = torch.cat(tuple(images_updated), dim = 0)
             images = torch.cat(tuple(images), dim = 0)
             sampled_images[sample['plate_index'].item() - 1][sample['condition_index'].item() - 1][sample['iteration_index'].item() - 1] = images
-            previous_iteration = images.unsqueeze(0)
+            previous_iteration = images_updated.unsqueeze(0)
             total_sample_loss += loss
             num_samples += 1
         total_sample_loss /= num_samples
