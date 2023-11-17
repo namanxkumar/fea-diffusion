@@ -51,8 +51,8 @@ def inject_function(step, loss, sample_loss, image_filenames, milestone):
 
 model = FDNUNet(
     input_dim=64,
-    num_channels=2, # geometry/displacement (2)
-    num_condition_channels=1, # geometry (1)
+    num_channels=2, # geometry (2)
+    # num_condition_channels=1, # geometry (1)
     num_auxiliary_condition_channels=3, # constraints (1) + force (2)
     num_stages=4
 )

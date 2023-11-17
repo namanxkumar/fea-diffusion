@@ -325,7 +325,8 @@ class FDNUNet(nn.Module):
         self.condition_feature_extractor = ConditionFeatureExtractor(num_auxiliary_condition_channels, stagewise_dimensions)
 
         # Define Resnet
-        resnet_module = partial(ConditionedResnetBlock, num_groups_for_normalization = resnet_num_groups_for_normalization, time_embedding_dim = time_embedding_dim)
+        # resnet_module = partial(ConditionedResnetBlock, num_groups_for_normalization = resnet_num_groups_for_normalization, time_embedding_dim = time_embedding_dim)
+        resnet_module = partial(ConditionedResnetBlock, num_groups_for_normalization = resnet_num_groups_for_normalization)
 
         # Define Attention
         if not use_full_attention:
@@ -390,7 +391,8 @@ class FDNUNet(nn.Module):
     def max_resolution(self):
         return 2 ** (self.num_stages - 1)
     
-    def forward(self, x: Tensor, time: Tensor, x_auxiliary_condition: Tensor, x_self_condition: Optional[Tensor] = None):
+    # def forward(self, x: Tensor, time: Tensor, x_auxiliary_condition: Tensor, x_self_condition: Optional[Tensor] = None):
+    def forward(self, x: Tensor, x_auxiliary_condition: Tensor, x_self_condition: Optional[Tensor] = None):
         assert all([divisible_by(dim, self.max_resolution) for dim in x.shape[-2:]]), f'width and height {x.shape[-2:]} must be divisible by {self.max_resolution}'
         
         if exists(self.num_condition_channels):
@@ -401,39 +403,46 @@ class FDNUNet(nn.Module):
 
         residual = x.clone()
 
-        time_embedding = self.time_embedding_mlp(time)
+        # time_embedding = self.time_embedding_mlp(time)
 
         auxiliary_condition_features = self.condition_feature_extractor(x_auxiliary_condition)
 
         hidden_states = []
 
         for index, (block_1, block_2, attention, downsample) in enumerate(self.down_layers):
-            x = block_1(x, auxiliary_condition_features[index], time_embedding = time_embedding)
+            x = block_1(x, auxiliary_condition_features[index])
+            # x = block_1(x, auxiliary_condition_features[index], time_embedding = time_embedding)
             hidden_states.append(x)
 
-            x = block_2(x, auxiliary_condition_features[index], time_embedding = time_embedding)
+            x = block_2(x, auxiliary_condition_features[index])
+            # x = block_2(x, auxiliary_condition_features[index], time_embedding = time_embedding)
             x = attention(x) + x
             hidden_states.append(x)
 
             x = downsample(x)
 
-        x = self.middle_block_1(x, auxiliary_condition_features[-1], time_embedding = time_embedding)
+        x = self.middle_block_1(x, auxiliary_condition_features[-1])
+        # x = self.middle_block_1(x, auxiliary_condition_features[-1], time_embedding = time_embedding)
         x = self.middle_attention(x) + x
-        x = self.middle_block_2(x, auxiliary_condition_features[-1], time_embedding = time_embedding)
+        x = self.middle_block_2(x, auxiliary_condition_features[-1])
+        # x = self.middle_block_2(x, auxiliary_condition_features[-1], time_embedding = time_embedding)
 
         for index, (block_1, block_2, attention, upsample) in enumerate(self.up_layers):
             x = torch.cat((x, hidden_states.pop()), dim = 1) # concat along the channel dimension
-            x = block_1(x, auxiliary_condition_features[-(index + 2)], time_embedding = time_embedding)
+            x = block_1(x, auxiliary_condition_features[-(index + 2)])
+            # x = block_1(x, auxiliary_condition_features[-(index + 2)], time_embedding = time_embedding)
             
             x = torch.cat((x, hidden_states.pop()), dim = 1) # concat along the channel dimension
-            x = block_2(x, auxiliary_condition_features[-(index + 2)], time_embedding = time_embedding)
+            x = block_2(x, auxiliary_condition_features[-(index + 2)])
+            # x = block_2(x, auxiliary_condition_features[-(index + 2)], time_embedding = time_embedding)
             x = attention(x) + x
 
             x = upsample(x)
 
         x = torch.cat((x, residual), dim = 1) # concat along the channel dimension
 
-        x = self.final_resnet_block(x, auxiliary_condition_features[0], time_embedding = time_embedding)
+        x = self.final_resnet_block(x, auxiliary_condition_features[0])
+        # x = self.final_resnet_block(x, auxiliary_condition_features[0], time_embedding = time_embedding)
         x = self.final_convolution(x)
         x = x / x.amax(dim = (-2, -1), keepdim = True) # normalize to [-1, 1] range
         return x
