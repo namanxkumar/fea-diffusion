@@ -342,7 +342,7 @@ class Trainer():
         self.step.batch_size = self.train_batch_size
 
     def calculate_losses(self, sampled_iteration: Tensor, groundtruth_iteration: Tensor) -> Tensor:
-        return F.mse_loss(sampled_iteration, groundtruth_iteration)
+        return F.mse_loss(self.unnormalize_from_negative_one_to_one(sampled_iteration)*255, self.unnormalize_from_negative_one_to_one(groundtruth_iteration)*255)
 
     @staticmethod
     def yield_data(dataloader, skipped_dataloader = None) -> Dict[str, Tensor]:
