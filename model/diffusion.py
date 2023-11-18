@@ -393,7 +393,7 @@ class Trainer():
         # sample['geometry'] = sample['geometry'].to(prediction.device)
         # sample['constraints'] = sample['constraints'].to(prediction.device)
         prediction = self.normalize_to_negative_one_to_one(self.unnormalize_from_negative_one_to_one(prediction) * self.unnormalize_from_negative_one_to_one(sample['geometry'])) # Mask out the regions that are not part of the geometry
-        prediction = prediction * (1.0 - self.unnormalize_from_negative_one_to_one(sample['constraints'])) # Mask out the regions that are constrained
+        # prediction = prediction * (1.0 - self.unnormalize_from_negative_one_to_one(sample['constraints'])) # Mask out the regions that are constrained
         return prediction
 
     def sample(self, batch, use_ema_model: bool = False) -> Tuple[List[Tensor], Tensor]:
