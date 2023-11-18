@@ -45,7 +45,7 @@ class FEADataset(Dataset):
     def __init__(
             self, 
             folder: str, 
-            lean: bool = False,
+            # lean: bool = False,
             extension: str = 'png', 
             image_size = 256, 
             augmentation: bool = False, 
@@ -71,14 +71,14 @@ class FEADataset(Dataset):
 
         self.samples_per_plate = self.conditions_per_plate_geometry * self.num_steps
         
-        self.lean = lean
+        # self.lean = lean
 
-        self.num_lean_samples = self.number_of_plate_geometries * self.conditions_per_plate_geometry
+        # self.num_lean_samples = self.number_of_plate_geometries * self.conditions_per_plate_geometry
 
-        if self.lean:
-            self.total_samples = int(self.num_lean_samples)
-        else:
-            self.total_samples = self.number_of_plate_geometries * self.samples_per_plate
+        # if self.lean:
+        #     self.total_samples = int(self.num_lean_samples)
+        # else:
+        self.total_samples = self.number_of_plate_geometries * self.samples_per_plate
 
         # self.displacement = displacement
         # self.strain = strain
@@ -95,20 +95,20 @@ class FEADataset(Dataset):
         return self.total_samples
     
     def __getitem__(self, index: int) -> Dict[str, Tensor]:
-        if self.lean:
-            # if index < self.num_lean_samples:
-            plate_index = (index // (self.conditions_per_plate_geometry)) + 1
-            condition_index = (index % (self.conditions_per_plate_geometry)) + 1
-            step_index = 1
-            # elif index >= self.num_lean_samples:
-            #     new_index = index - self.num_lean_samples
-            #     plate_index = (new_index // (self.samples_per_plate)) + 1
-            #     condition_index = (new_index % (self.samples_per_plate)) // self.num_steps + 1
-            #     step_index = (new_index % (self.samples_per_plate)) % self.num_steps + 1
-        else:
-            plate_index = (index // (self.samples_per_plate)) + 1
-            condition_index = (index % (self.samples_per_plate)) // self.num_steps + 1
-            step_index = (index % (self.samples_per_plate)) % self.num_steps + 1
+        # if self.lean:
+        #     # if index < self.num_lean_samples:
+        #     plate_index = (index // (self.conditions_per_plate_geometry)) + 1
+        #     condition_index = (index % (self.conditions_per_plate_geometry)) + 1
+        #     step_index = 1
+        #     # elif index >= self.num_lean_samples:
+        #     #     new_index = index - self.num_lean_samples
+        #     #     plate_index = (new_index // (self.samples_per_plate)) + 1
+        #     #     condition_index = (new_index % (self.samples_per_plate)) // self.num_steps + 1
+        #     #     step_index = (new_index % (self.samples_per_plate)) % self.num_steps + 1
+        # else:
+        plate_index = (index // (self.samples_per_plate)) + 1
+        condition_index = (index % (self.samples_per_plate)) // self.num_steps + 1
+        step_index = (index % (self.samples_per_plate)) % self.num_steps + 1
 
         transform = transforms.Compose([
             transforms.Resize((self.image_size, self.image_size)),
@@ -245,11 +245,6 @@ class Trainer():
         self.num_samples = len(self.sample_dataset)
 
         assert len(self.dataset) >= 100, 'you should have at least 100 samples in your folder. at least 10k images recommended'
-
-        # train dataloader contains all the lean_dataset samples and only 50% of the len(lean_dataset) samples from the dataset
-        # sample dataloader contains all the samples from the sample_dataset
-
-        # self.train_dataloader = DataLoader(self.dataset, batch_size=self.train_batch_size, shuffle=True, num_workers=0, pin_memory=True)
         
         self.train_dataloader = DataLoader(self.dataset, batch_size=self.train_batch_size, shuffle=True, num_workers=0, pin_memory=True)
         self.sample_dataloader = DataLoader(self.sample_dataset, batch_size=self.sample_batch_size, shuffle=False, num_workers=0, pin_memory=True)
@@ -344,7 +339,8 @@ class Trainer():
         self.step.batch_size = self.train_batch_size
 
     def calculate_losses(self, sampled_iteration: Tensor, groundtruth_iteration: Tensor) -> Tensor:
-        return F.l1_loss(sampled_iteration, groundtruth_iteration, reduction='sum')
+        # return F.l1_loss(sampled_iteration, groundtruth_iteration, reduction='sum')
+        return F.mse_loss(sampled_iteration, groundtruth_iteration)
 
     @staticmethod
     def yield_data(dataloader, skipped_dataloader = None) -> Dict[str, Tensor]:

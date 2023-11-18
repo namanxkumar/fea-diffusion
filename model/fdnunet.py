@@ -86,7 +86,7 @@ class FeatureDenormalization(nn.Module):
         self.normalize = nn.GroupNorm(num_groups_for_normalization, input_dim, affine=False)
         self.scale_convolution = nn.Conv2d(feature_dim, input_dim, kernel_size=3, padding=1)
         self.shift_convolution = nn.Conv2d(feature_dim, input_dim, kernel_size=3, padding=1)
-        self.activation = nn.ReLU()
+        self.activation = nn.SiLU()
 
     def forward(self, x: Tensor, features: Tensor):
         assert features.size()[2:] == x.size()[2:], 'features must have the same spatial dimensions as x'
@@ -104,26 +104,26 @@ class ConditionFeatureExtractor(nn.Module):
 
         self.pre_extractors = nn.Sequential(
             nn.Conv2d(num_condition_channels, 32, kernel_size=3, padding=1),
-            nn.ReLU(),
+            nn.SiLU(),
             nn.Conv2d(32, 64, kernel_size=3, padding=1),
-            nn.ReLU(),
+            nn.SiLU(),
             nn.Conv2d(64, 128, kernel_size=3, padding=1),
-            nn.ReLU(),
+            nn.SiLU(),
             nn.Conv2d(128, 128, kernel_size=3, padding=1),
-            nn.ReLU(),
+            nn.SiLU(),
         )
 
         self.extractors = nn.ModuleList([
             nn.Sequential(
                 nn.Conv2d(128, stagewise_input_to_output_dims[0][0], kernel_size=3, padding=1),
-                nn.ReLU(),
+                nn.SiLU(),
             ),
         ])
 
         for index, (input_dim, output_dim) in enumerate(stagewise_input_to_output_dims):
             module = nn.Sequential(
                 (nn.Conv2d(input_dim, output_dim, kernel_size = 3, padding = 1) if (index == len(stagewise_input_to_output_dims) - 1) else Downsample(input_dim, output_dim)),
-                nn.ReLU(),
+                nn.SiLU(),
             )
             self.extractors.append(module)
 
@@ -142,7 +142,7 @@ class LeanResnetSubBlock(nn.Module):
     def __init__(self, input_dim: int, output_dim: int):
         super().__init__()
         self.project = nn.Conv2d(input_dim, output_dim, 3, padding = 1)
-        self.activate = nn.ReLU()
+        self.activate = nn.SiLU()
 
     def forward(self, x: Tensor, scale_shift = None):
         x = self.project(x)
@@ -159,7 +159,7 @@ class ConditionedResnetBlock(nn.Module):
         super().__init__()
 
         self.time_embedding_to_scale_shift = nn.Sequential(
-            nn.ReLU(),
+            nn.SiLU(),
             nn.Linear(time_embedding_dim, output_dim * 2)
         ) if exists(time_embedding_dim) else None
 
