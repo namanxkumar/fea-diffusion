@@ -342,7 +342,7 @@ class Trainer():
         self.step.batch_size = self.train_batch_size
 
     def calculate_losses(self, sampled_iteration: Tensor, groundtruth_iteration: Tensor) -> Tensor:
-        return F.mse_loss(self.unnormalize_from_negative_one_to_one(sampled_iteration)*255, self.unnormalize_from_negative_one_to_one(groundtruth_iteration)*255)
+        return F.l1_loss(sampled_iteration, groundtruth_iteration)
 
     @staticmethod
     def yield_data(dataloader, skipped_dataloader = None) -> Dict[str, Tensor]:
@@ -406,7 +406,7 @@ class Trainer():
                     images.append(self.create_view_friendly_image(output[i][j]))
             return images, loss
     
-    def sample_and_save(self, milestone: Union[int, str] = None, use_ema_model: bool = False):
+    def sample_and_save(self, milestone: Union[int, str] = None, use_ema_model: bool = False, save = True):
         sampled_images = []
         image_filenames = []
         total_sample_loss = 0.0
@@ -418,16 +418,18 @@ class Trainer():
             num_batches += 1
         total_sample_loss /= num_batches
 
-        for i, image in enumerate(sampled_images):
-            if exists(milestone):
-                plt.imsave(str(self.results_folder / f'sample-{i}-{milestone}.png'), torch.squeeze(image).cpu().detach().numpy(), cmap='Greys', vmin=0, vmax=255)
-                image_filenames.append(str(self.results_folder / f'sample-{i}-{milestone}.png'))
-                # image.save(str(self.results_folder / f'sample-{i}-{milestone}.png'))
-            else:
-                plt.imsave(str(self.results_folder / f'sample-{i}.png'), torch.squeeze(image).cpu().detach().numpy(), cmap='Greys', vmin=0, vmax=255)
-                image_filenames.append(str(self.results_folder / f'sample-{i}.png'))
-                # image.save(str(self.results_folder / f'sample-{i}.png'))
-
+        if save:
+            for i, image in enumerate(sampled_images):
+                if exists(milestone):
+                    plt.imsave(str(self.results_folder / f'sample-{i}-{milestone}.png'), torch.squeeze(image).cpu().detach().numpy(), cmap='Greys', vmin=0, vmax=255)
+                    image_filenames.append(str(self.results_folder / f'sample-{i}-{milestone}.png'))
+                    # image.save(str(self.results_folder / f'sample-{i}-{milestone}.png'))
+                else:
+                    plt.imsave(str(self.results_folder / f'sample-{i}.png'), torch.squeeze(image).cpu().detach().numpy(), cmap='Greys', vmin=0, vmax=255)
+                    image_filenames.append(str(self.results_folder / f'sample-{i}.png'))
+                    # image.save(str(self.results_folder / f'sample-{i}.png'))
+        else:
+            image_filenames = None
         return sampled_images, image_filenames, total_sample_loss
     
     # def successive_sample_and_save(self, milestone: Union[int, str], use_ema_model: bool = False):
@@ -505,7 +507,6 @@ class Trainer():
                 self.step.step += 1
 
                 if self.accelerator.is_main_process:
-                    
                     self.ema.update()
                     total_sample_loss = None
                     image_filenames = None
@@ -516,13 +517,17 @@ class Trainer():
                         
                         with torch.inference_mode():
                             milestone = self.step.step // self.num_steps_per_milestone
-                            _, image_filenames, total_sample_loss = self.sample_and_save(use_ema_model=True)
+                            _, image_filenames, total_sample_loss = self.sample_and_save(use_ema_model=False)
                             logging.info(f'sample loss: {total_sample_loss:.4f}')
                         self.save_checkpoint(milestone)
+                    else:
+                        with torch.inference_mode():
+                            _, _, total_sample_loss = self.sample_and_save(use_ema_model=False)
+                            logging.info(f'sample loss: {total_sample_loss:.4f}')
 
                     if exists(wandb_inject_function):
                         wandb_inject_function(self.step.step, total_loss, total_sample_loss, image_filenames, milestone)
-                        
+
                 progress_bar.update(1)
                 
         self.accelerator.wait_for_everyone()

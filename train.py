@@ -39,7 +39,8 @@ def inject_function(step, loss, sample_loss, image_filenames, milestone):
         wandb.log({'step': step, 'train_loss': loss, 'sample_loss': sample_loss, 'samples': [wandb.Image(image) for image in image_filenames]})
         artifact.add_file(Path(args.results_dir) / f'model-{milestone}.zip')
         wandb.log_artifact(artifact)
-        
+    elif sample_loss is not None:
+        wandb.log({'step': step, 'train_loss': loss, 'sample_loss': sample_loss})
     else:
         wandb.log({'step': step, 'train_loss': loss})
 
