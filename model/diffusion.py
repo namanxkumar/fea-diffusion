@@ -208,7 +208,8 @@ class Trainer():
             num_gradient_accumulation_steps: int = 1,
             train_learning_rate: float = 1e-4,
             num_train_steps: int = 1000,
-            num_steps_per_milestone: int = 100,
+            num_steps_per_milestone: int = 250,
+            num_steps_per_soft_milestone: int = 50,
             adam_betas = (0.9, 0.99),
             max_gradient_norm: float = 1.0,
             ema_decay: float = 0.995,
@@ -225,6 +226,7 @@ class Trainer():
         
         # Parameters
         self.num_steps_per_milestone = num_steps_per_milestone
+        self.num_steps_per_soft_milestone = num_steps_per_soft_milestone
         self.sample_batch_size = sample_batch_size if exists(sample_batch_size) else train_batch_size
         
         self.train_batch_size = train_batch_size
@@ -520,7 +522,7 @@ class Trainer():
                             _, image_filenames, total_sample_loss = self.sample_and_save(use_ema_model=False)
                             logging.info(f'sample loss: {total_sample_loss:.4f}')
                         self.save_checkpoint(milestone)
-                    else:
+                    elif self.step.step != 0 and self.step.step % self.num_steps_per_soft_milestone == 0:
                         with torch.inference_mode():
                             _, _, total_sample_loss = self.sample_and_save(use_ema_model=False)
                             logging.info(f'sample loss: {total_sample_loss:.4f}')
