@@ -409,7 +409,7 @@ class Trainer():
         image_filenames = []
         total_sample_loss = 0.0
         num_batches = 0
-        for batch in tqdm(self.sample_dataloader):
+        for batch in self.sample_dataloader:
             images, loss = self.sample(batch, use_ema_model)
             sampled_images += images
             total_sample_loss += loss
