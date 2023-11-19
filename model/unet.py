@@ -247,17 +247,18 @@ class UNet(nn.Module):
         assert len(stagewise_input_to_output_dims) == num_stages, 'stagewise input to output dimensions must be equal to number of stages'
         
         # Define Time Embedding
-        time_embedding_dim = input_dim * 4
+        # time_embedding_dim = input_dim * 4
 
-        self.time_embedding_mlp = nn.Sequential(
-            SinusoidalPosEmb(input_dim, theta = positional_embedding_theta),
-            nn.Linear(input_dim, time_embedding_dim),
-            nn.GELU(),
-            nn.Linear(time_embedding_dim, time_embedding_dim)
-        )
+        # self.time_embedding_mlp = nn.Sequential(
+        #     SinusoidalPosEmb(input_dim, theta = positional_embedding_theta),
+        #     nn.Linear(input_dim, time_embedding_dim),
+        #     nn.GELU(),
+        #     nn.Linear(time_embedding_dim, time_embedding_dim)
+        # )
         
         # Define Resnet
-        resnet_module = partial(ResnetBlock, num_groups_for_normalization = resnet_num_groups_for_normalization, time_embedding_dim = time_embedding_dim)
+        # resnet_module = partial(ResnetBlock, num_groups_for_normalization = resnet_num_groups_for_normalization, time_embedding_dim = time_embedding_dim)
+        resnet_module = partial(ResnetBlock, num_groups_for_normalization = resnet_num_groups_for_normalization)
 
         # Define Attention
         if not use_full_attention:
@@ -322,7 +323,8 @@ class UNet(nn.Module):
     def max_resolution(self):
         return 2 ** (self.num_stages - 1)
     
-    def forward(self, x: Tensor, time: Tensor, x_self_condition: Optional[Tensor] = None):
+    def forward(self, x: Tensor, x_self_condition: Optional[Tensor] = None):
+    # def forward(self, x: Tensor, time: Tensor, x_self_condition: Optional[Tensor] = None):
         assert all([divisible_by(dim, self.max_resolution) for dim in x.shape[-2:]]), f'width and height {x.shape[-2:]} must be divisible by {self.max_resolution}'
         
         if exists(self.num_condition_channels):
@@ -333,37 +335,44 @@ class UNet(nn.Module):
 
         residual = x.clone()
 
-        time_embedding = self.time_embedding_mlp(time)
+        # time_embedding = self.time_embedding_mlp(time)
 
         hidden_states = []
 
         for block_1, block_2, attention, downsample in self.down_layers:
-            x = block_1(x, time_embedding = time_embedding)
+            x = block_1(x)
+            # x = block_1(x, time_embedding = time_embedding)
             hidden_states.append(x)
 
-            x = block_2(x, time_embedding = time_embedding)
+            x = block_2(x)
+            # x = block_2(x, time_embedding = time_embedding)
             x = attention(x) + x
             hidden_states.append(x)
 
             x = downsample(x)
 
-        x = self.middle_block_1(x, time_embedding = time_embedding)
+        x = self.middle_block_1(x)
+        # x = self.middle_block_1(x, time_embedding = time_embedding)
         x = self.middle_attention(x) + x
-        x = self.middle_block_2(x, time_embedding = time_embedding)
+        x = self.middle_block_2(x)
+        # x = self.middle_block_2(x, time_embedding = time_embedding)
 
         for block_1, block_2, attention, upsample in self.up_layers:
             x = torch.cat((x, hidden_states.pop()), dim = 1) # concat along the channel dimension
-            x = block_1(x, time_embedding = time_embedding)
+            x = block_1(x)
+            # x = block_1(x, time_embedding = time_embedding)
             
             x = torch.cat((x, hidden_states.pop()), dim = 1) # concat along the channel dimension
-            x = block_2(x, time_embedding = time_embedding)
+            x = block_2(x)
+            # x = block_2(x, time_embedding = time_embedding)
             x = attention(x) + x
 
             x = upsample(x)
 
         x = torch.cat((x, residual), dim = 1) # concat along the channel dimension
 
-        x = self.final_resnet_block(x, time_embedding = time_embedding)
+        x = self.final_resnet_block(x)
+        # x = self.final_resnet_block(x, time_embedding = time_embedding)
         x = self.final_convolution(x)
         x = x / x.amax(dim = (-2, -1), keepdim = True) # normalize to [-1, 1] range
         return x

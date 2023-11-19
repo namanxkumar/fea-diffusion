@@ -379,15 +379,15 @@ class Trainer():
         if type(self.model) == FDNUNet:
             conditions = torch.cat((sample['forces'], sample['constraints']), dim = 1).to(self.device)
         else:
-            raise NotImplementedError('Only FDNUNet is supported')
-            # conditions = torch.cat((sample['forces'], sample['constraints'], sample['geometry']), dim = 1).to(self.device)
+            # raise NotImplementedError('Only FDNUNet is supported')
+            conditions = torch.cat((sample['forces'], sample['constraints']), dim = 1).to(self.device)
         previous_iteration = sample['previous_iteration'].to(self.device)
         # iteration_index = sample['iteration_index'].to(self.device)
         if type(self.model) == FDNUNet:
             prediction = self.model(previous_iteration, conditions)
         else:
-            raise NotImplementedError('Only FDNUNet is supported')
-            # prediction = self.model(previous_iteration, iteration_index, conditions) if not use_ema_model else self.ema.ema_model(previous_iteration, iteration_index, conditions)
+            # raise NotImplementedError('Only FDNUNet is supported')
+            prediction = self.model(previous_iteration, conditions) if not use_ema_model else self.ema.ema_model(previous_iteration, conditions)
         # sample['geometry'] = sample['geometry'].to(prediction.device)
         # sample['constraints'] = sample['constraints'].to(prediction.device)
         prediction = self.normalize_to_negative_one_to_one(self.unnormalize_from_negative_one_to_one(prediction) * self.unnormalize_from_negative_one_to_one(sample['geometry'])) # Mask out the regions that are not part of the geometry
