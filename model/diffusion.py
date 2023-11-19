@@ -344,7 +344,7 @@ class Trainer():
 
     def yield_data(self) -> Dict[str, Tensor]:
         if exists(self.skipped_dataloader):
-            for data in skipped_dataloader:
+            for data in self.skipped_dataloader:
                 yield data
         while True:
             for data in self.train_dataloader:
