@@ -333,6 +333,7 @@ class Trainer():
         self.accelerator.load_state(self.results_folder / f'model-{milestone}')
         self.step.batch_size = override_batch_size if exists(override_batch_size) else self.step.batch_size
         num_skips = (self.step.step * self.step.gradient_accumulation_steps * self.step.batch_size) // self.train_batch_size
+        num_skips = num_skips % len(self.train_dataloader)
         self.skipped_dataloader = self.accelerator.skip_first_batches(self.train_dataloader, num_skips)
         self.train_yielder = self.yield_data(self.train_dataloader, self.skipped_dataloader)
         self.step.gradient_accumulation_steps = self.num_gradient_accumulation_steps
