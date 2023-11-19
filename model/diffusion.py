@@ -342,13 +342,12 @@ class Trainer():
         # return F.l1_loss(sampled_iteration, groundtruth_iteration, reduction='sum')
         return F.mse_loss(sampled_iteration, groundtruth_iteration)
 
-    @staticmethod
-    def yield_data(dataloader, skipped_dataloader = None) -> Dict[str, Tensor]:
-        if exists(skipped_dataloader):
+    def yield_data(self) -> Dict[str, Tensor]:
+        if exists(self.skipped_dataloader):
             for data in skipped_dataloader:
                 yield data
         while True:
-            for data in dataloader:
+            for data in self.train_dataloader:
                 yield data
     
     @staticmethod
