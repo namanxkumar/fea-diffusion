@@ -274,7 +274,7 @@ class Trainer():
 
         self.skipped_dataloader = None
 
-        self.train_yielder = self.yield_data(self.train_dataloader)
+        self.train_yielder = self.yield_data()
 
     @property
     def device(self):
