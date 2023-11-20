@@ -21,6 +21,7 @@ parser.add_argument('--num_steps', type=int, default=10000, help='Number of step
 parser.add_argument('--num_steps_per_milestone', type=int, default=500, help='Number of steps per milestone.')
 parser.add_argument('--ema_steps_per_milestone', type=int, default=10, help='EMA steps per milestone.')
 parser.add_argument('--learning_rate', type=float, default=3e-4, help='Learning rate.')
+parser.add_argument('--loss_type', type=str, default='l1', help='Loss type.')
 parser.add_argument('--checkpoint', type=str, default=None, help='Checkpoint to load from (should be in results folder).')
 
 args = parser.parse_args()
@@ -70,6 +71,7 @@ trainer = Trainer(
     num_train_steps=args.num_steps,
     num_steps_per_milestone=args.num_steps_per_milestone,
     ema_steps_per_milestone=args.ema_steps_per_milestone,
+    loss_type=args.loss_type,
     results_folder=args.results_dir,
 )
 
