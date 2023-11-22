@@ -50,7 +50,7 @@ class FEADataset(Dataset):
             augmentation: bool = False, 
             conditions_per_plate: int = 4, 
             num_steps: int = 11,
-            min_max_magnitude: Tuple[int, int] = (500, 5000)
+            min_max_magnitude: Tuple[int, int] = (0, 5000)
         ):
         super().__init__()
         self.path = Path(f'{folder}')
@@ -104,14 +104,14 @@ class FEADataset(Dataset):
         sample['iteration_index'] = torch.tensor(step_index)
 
         # if step_index == 1:
-        sample['previous_iteration'] = (
-            sample['geometry'],
-        )*2
+        # sample['previous_iteration'] = (
+        #     sample['geometry'],
+        # )*2
         # else:
-        #     sample['previous_iteration'] = (
-        #         self.normalize_to_negative_one_to_one(transform(Image.open(self.path / f'{plate_index}' / f'{condition_index}' / f'outputs_displacement_x_{step_index - 1}.{self.extension}'))), 
-        #         self.normalize_to_negative_one_to_one(transform(Image.open(self.path / f'{plate_index}' / f'{condition_index}' / f'outputs_displacement_y_{step_index - 1}.{self.extension}')))
-        #     )
+        sample['previous_iteration'] = (
+            self.normalize_to_negative_one_to_one(transform(Image.open(self.path / f'{plate_index}' / f'{condition_index}' / f'outputs_displacement_x_0.{self.extension}'))), 
+            self.normalize_to_negative_one_to_one(transform(Image.open(self.path / f'{plate_index}' / f'{condition_index}' / f'outputs_displacement_y_0.{self.extension}')))
+        )
         sample['previous_iteration'] = torch.cat(sample['previous_iteration'], dim = 0)
 
         sample['displacement'] = (
