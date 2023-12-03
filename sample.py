@@ -45,19 +45,19 @@ parser.add_argument("--milestone", type=str, default="test", help="Milestone nam
 
 args = parser.parse_args()
 
-model = UNet(
-    input_dim=64,
-    num_channels=2,  # displacement (2)
-    num_condition_channels=4,  # constraints (1) + force (2) + geometry (1)
-)
-
-# model = FDNUNet(
+# model = UNet(
 #     input_dim=64,
-#     num_channels=2, # geometry/displacement (2)
-#     num_condition_channels=1, # geometry (1)
-#     num_auxiliary_condition_channels=3, # constraints (1) + force (2)
-#     num_stages=4
+#     num_channels=2,  # displacement (2)
+#     num_condition_channels=4,  # constraints (1) + force (2) + geometry (1)
 # )
+
+model = FDNUNet(
+    input_dim=64,
+    num_channels=2, # geometry/displacement (2)
+    # num_condition_channels=1, # geometry (1)
+    num_auxiliary_condition_channels=3, # constraints (1) + force (2)
+    num_stages=4
+)
 
 trainer = Trainer(
     model=model,
