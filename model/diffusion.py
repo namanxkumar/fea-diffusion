@@ -265,6 +265,8 @@ class Trainer:
         train_batch_size: int = 16,
         sample_batch_size: Optional[int] = None,
         num_sample_conditions_per_plate: int = 1,
+        num_steps_per_condition: int = 11,
+        num_steps_per_sample_condition: int = 11,
         num_gradient_accumulation_steps: int = 1,
         train_learning_rate: float = 1e-4,
         num_train_steps: int = 1000,
@@ -311,12 +313,14 @@ class Trainer:
             dataset_folder,
             image_size=dataset_image_size,
             augmentation=use_dataset_augmentation,
+            num_steps = num_steps_per_condition,
         )
         self.sample_dataset = FEADataset(
             sample_dataset_folder,
             image_size=dataset_image_size,
             augmentation=False,
             conditions_per_plate=num_sample_conditions_per_plate,
+            num_steps = num_steps_per_sample_condition,
         )
         self.num_samples = len(self.sample_dataset)
 
