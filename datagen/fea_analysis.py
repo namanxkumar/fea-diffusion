@@ -288,22 +288,23 @@ class FEAnalysis:
         ls = ScipyDirect({})
         nls_status = IndexedStruct()
         return Newton({}, lin_solver=ls, status=nls_status)
-
+ 
     def _save_regions(self, problem: Problem) -> None:
-        if path.isfile(path.join(self.data_dir, self.region_filename + ".vtk")):
-            os.remove(path.join(self.data_dir, self.region_filename + ".vtk"))
-        problem.save_regions_as_groups(path.join(self.data_dir, self.region_filename))
+        directory = self.condition_dir if self.save_meshes else self.data_dir
+        if path.isfile(path.join(directory, self.region_filename + ".vtk")):
+            os.remove(path.join(directory, self.region_filename + ".vtk"))
+        problem.save_regions_as_groups(path.join(directory, self.region_filename))
 
-        if self.save_meshes:
-            # save copy of regions file in condition directory
-            if path.isfile(
-                path.join(self.condition_dir, self.region_filename + ".vtk")
-            ):
-                os.remove(path.join(self.condition_dir, self.region_filename + ".vtk"))
-            os.rename(
-                path.join(self.data_dir, self.region_filename + ".vtk"),
-                path.join(self.condition_dir, self.region_filename + ".vtk"),
-            )
+        # if self.save_meshes:
+        #     # save copy of regions file in condition directory
+        #     if path.isfile(
+        #         path.join(self.condition_dir, self.region_filename + ".vtk")
+        #     ):
+        #         os.remove(path.join(self.condition_dir, self.region_filename + ".vtk"))
+        #     os.rename(
+        #         path.join(self.data_dir, self.region_filename + ".vtk"),
+        #         path.join(self.condition_dir, self.region_filename + ".vtk"),
+        #     )
 
     # def _save_solution(self, problem: Problem, output) -> None:
     #     problem.save_state(self.solution_filename, out=output)
@@ -347,24 +348,24 @@ class FEAnalysis:
 
         self._save_regions(problem)
 
-        problem.output_dir = self.data_dir
+        problem.output_dir = self.condition_dir if self.save_meshes else self.data_dir
         variables: Variables = problem.solve(
             save_results=True, post_process_hook=self.calculate_stress_strain
         )
 
-        if self.save_meshes:
-            # copy solution files to condition directory domain.xx.vtk where xx is 00 to 11
-            for step in range(self.num_steps):
-                if path.isfile(
-                    path.join(self.condition_dir, "domain.{:0>2}.vtk".format(step))
-                ):
-                    os.remove(
-                        path.join(self.condition_dir, "domain.{:0>2}.vtk".format(step))
-                    )
-                os.rename(
-                    path.join(self.data_dir, "domain.{:0>2}.vtk".format(step)),
-                    path.join(self.condition_dir, "domain.{:0>2}.vtk".format(step)),
-                )
+        # if self.save_meshes:
+        #     # copy solution files to condition directory domain.xx.vtk where xx is 00 to 11
+        #     for step in range(self.num_steps):
+        #         if path.isfile(
+        #             path.join(self.condition_dir, "domain.{:0>2}.vtk".format(step))
+        #         ):
+        #             os.remove(
+        #                 path.join(self.condition_dir, "domain.{:0>2}.vtk".format(step))
+        #             )
+        #         os.rename(
+        #             path.join(self.data_dir, "domain.{:0>2}.vtk".format(step)),
+        #             path.join(self.condition_dir, "domain.{:0>2}.vtk".format(step)),
+        #         )
         # print(np.array(variables.create_output()['u'].data).shape)
         # print(variables.get_state_parts())
 
@@ -378,11 +379,15 @@ class FEAnalysis:
             self.bounds = bounds
 
     def save_input_image(self, filepath, input_filepath=None, outline=False, crop=True):
+        if self.num_steps <= 10:
+            domainfilename = "domain.0.vtk"
+        else:
+            domainfilename = "domain.00.vtk"
         if input_filepath is None:
             if self.save_meshes:
-                input_filepath = path.join(self.condition_dir, "domain.00.vtk")
+                input_filepath = path.join(self.condition_dir, domainfilename)
             else:
-                input_filepath = path.join(self.data_dir, "domain.00.vtk")
+                input_filepath = path.join(self.data_dir, domainfilename)
         if outline:
             plot(
                 filenames=[input_filepath],
@@ -478,10 +483,15 @@ class FEAnalysis:
                 else:
                     directory = self.data_dir
 
+                if self.num_steps <= 10:
+                    domainfilename = "domain.{}.vtk"
+                else:
+                    domainfilename = "domain.{:0>2}.vtk"
+
                 # plot(filenames=["domain.{:0>2}.vtk".format(s) for s in range(self.num_steps)], fields=config, step=step, window_size=(self.image_size, self.image_size), screenshot=filepath, show_scalar_bars=True)
                 plot(
                     filenames=[
-                        path.join(directory, "domain.{:0>2}.vtk".format(s))
+                        path.join(directory, domainfilename.format(s))
                         for s in range(self.num_steps)
                     ],
                     fields=config,
