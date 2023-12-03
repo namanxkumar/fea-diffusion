@@ -22,6 +22,12 @@ parser.add_argument(
     help="Number of sample conditions per plate.",
 )
 parser.add_argument(
+    "--num_steps_per_sample_condition",
+    type=int,
+    default=11,
+    help="Number of steps per sample conditions per plate.",
+)
+parser.add_argument(
     "--results_dir", type=str, default="results", help="Results directory."
 )
 parser.add_argument("--image_size", type=int, default=256, help="Image size.")
@@ -68,6 +74,7 @@ trainer = Trainer(
     dataset_image_size=args.image_size,
     train_batch_size=args.batch_size,
     results_folder=args.results_dir,
+    num_steps_per_sample_condition=args.num_steps_per_sample_condition,
 )
 
 trainer.load_checkpoint(args.checkpoint)
