@@ -8,10 +8,12 @@ parser.add_argument('--conditions_per_plate', type=int, default=4, help='Number 
 parser.add_argument('--steps_per_condition', type=int, default=11, help='Number of steps to generate per condition.')
 parser.add_argument('--mesh_size', type=int, default=1e-2, help='Mesh size.')
 parser.add_argument('--image_size', type=int, default=512, help='Image size.')
+parser.add_argument('--save_meshes', action='store_true', help='Save meshes per condition.')
 parser.add_argument('--save_displacement', action='store_true', help='Save displacement images.')
 parser.add_argument('--save_strain', action='store_true', help='Save strain images.')
 parser.add_argument('--save_stress', action='store_true', help='Save stress images.')
 parser.add_argument('--data_dir', type=str, default='data', help='Data directory.')
+
 args = parser.parse_args()
 
 assert args.save_displacement or args.save_strain or args.save_stress, 'Must save at least one of displacement, strain, or stress.'
@@ -26,7 +28,8 @@ generate_data(
     save_displacement=args.save_displacement,
     save_strain=args.save_strain,
     save_stress=args.save_stress,
-    num_steps_per_condition=args.steps_per_condition
+    num_steps_per_condition=args.steps_per_condition,
+    save_meshes=args.save_meshes,
 )
 
 # generate_data(

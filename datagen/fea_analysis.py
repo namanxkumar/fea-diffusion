@@ -20,9 +20,11 @@ import math
 from PIL import Image
 
 class FEAnalysis:
-    def __init__(self, filename: str, data_dir : str, condition_dir : str, force_vertex_tags_magnitudes: List[Tuple[int, Tuple[float, float]]], force_edges_tags_magnitudes: List[Tuple[Tuple[int, int], Tuple[int, int]]], constraints_vertex_tags: List[int], constraints_edges_tags: List[Tuple[int, int]], youngs_modulus: float = 210000, poisson_ratio: float = 0.3, num_steps: int = 11):
+    def __init__(self, filename: str, data_dir : str, condition_dir : str, force_vertex_tags_magnitudes: List[Tuple[int, Tuple[float, float]]], force_edges_tags_magnitudes: List[Tuple[Tuple[int, int], Tuple[int, int]]], constraints_vertex_tags: List[int], constraints_edges_tags: List[Tuple[int, int]], youngs_modulus: float = 210000, poisson_ratio: float = 0.3, num_steps: int = 11, save_meshes=False,):
         self.data_dir = data_dir
         self.region_filename = "regions"
+        self.save_meshes = save_meshes
+        self.condition_dir = condition_dir
         # self.solution_filename = "solution.vtk"
         self.initial_image_size = math.ceil(512/0.685546875)
         self.image_size = self.initial_image_size
@@ -172,6 +174,16 @@ class FEAnalysis:
             os.remove(path.join(self.data_dir, self.region_filename + ".vtk"))
         problem.save_regions_as_groups(path.join(self.data_dir, self.region_filename))
 
+        if self.save_meshes:
+            # save copy of regions file in condition directory
+            if path.isfile(
+                path.join(self.condition_dir, self.region_filename + ".vtk")
+            ):
+                os.remove(path.join(self.condition_dir, self.region_filename + ".vtk"))
+            os.rename(
+                path.join(self.data_dir, self.region_filename + ".vtk"),
+                path.join(self.condition_dir, self.region_filename + ".vtk"),
+            )
     # def _save_solution(self, problem: Problem, output) -> None:
     #     problem.save_state(self.solution_filename, out=output)
 
@@ -206,6 +218,20 @@ class FEAnalysis:
 
         problem.output_dir = self.data_dir
         variables : Variables = problem.solve(save_results=True, post_process_hook=self.calculate_stress_strain)
+
+        if self.save_meshes:
+            # copy solution files to condition directory domain.xx.vtk where xx is 00 to 11
+            for step in range(self.num_steps):
+                if path.isfile(
+                    path.join(self.condition_dir, "domain.{:0>2}.vtk".format(step))
+                ):
+                    os.remove(
+                        path.join(self.condition_dir, "domain.{:0>2}.vtk".format(step))
+                    )
+                os.rename(
+                    path.join(self.data_dir, "domain.{:0>2}.vtk".format(step)),
+                    path.join(self.condition_dir, "domain.{:0>2}.vtk".format(step)),
+                )
         # print(np.array(variables.create_output()['u'].data).shape)
         # print(variables.get_state_parts())
 
@@ -218,7 +244,10 @@ class FEAnalysis:
 
     def save_input_image(self, filepath, input_filepath = None, outline = False, crop = True):
         if input_filepath is None:
-            input_filepath = path.join(self.data_dir, "domain.00.vtk")
+            if self.save_meshes:
+                input_filepath = path.join(self.condition_dir, "domain.00.vtk")
+            else:
+                input_filepath = path.join(self.data_dir, "domain.00.vtk")
         if outline:
             plot(filenames=[input_filepath], fields=[("1", "vs")], window_size=(self.image_size, self.image_size), outline=True, screenshot=filepath)
             # system("sfepy-view {} -s 0 -f 1:vs {} --outline -o {}".format(input_filepath, self.common_config, filepath))
@@ -234,7 +263,11 @@ class FEAnalysis:
             filepath = "{}_{}.png".format(filepathroot, config)
 
             # system("sfepy-view {}.vtk -f {}:vs {} -o {}".format(path.join(self.data_dir, self.region_filename), config, self.common_config, filepath))
-            plot(filenames=["{}.vtk".format(path.join(self.data_dir, self.region_filename))], fields=[(config, "vs")], window_size=(self.image_size, self.image_size), screenshot=filepath)
+            if self.save_meshes:
+                directory = self.condition_dir
+            else:
+                directory = self.data_dir
+            plot(filenames=["{}.vtk".format(path.join(directory, self.region_filename))], fields=[(config, "vs")], window_size=(self.image_size, self.image_size), screenshot=filepath)
             
             if crop:
                 self.crop_image(filepath, self.bounds)
@@ -279,8 +312,13 @@ class FEAnalysis:
                 elif type == 'strain_x' or type == 'strain_y':
                     scalar_bar_range = [-10, 10]
                 
+                if self.save_meshes:
+                    directory = self.condition_dir
+                else:
+                    directory = self.data_dir
+
                 # plot(filenames=["domain.{:0>2}.vtk".format(s) for s in range(self.num_steps)], fields=config, step=step, window_size=(self.image_size, self.image_size), screenshot=filepath, show_scalar_bars=True)
-                plot(filenames=[path.join(self.data_dir, "domain.{:0>2}.vtk".format(s)) for s in range(self.num_steps)], fields=config, step=step, window_size=(self.image_size, self.image_size), screenshot=filepath, scalar_bar_range=scalar_bar_range)
+                plot(filenames=[path.join(directory, "domain.{:0>2}.vtk".format(s)) for s in range(self.num_steps)], fields=config, step=step, window_size=(self.image_size, self.image_size), screenshot=filepath, scalar_bar_range=scalar_bar_range)
 
                 if crop:
                     # pass
