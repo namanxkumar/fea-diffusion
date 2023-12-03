@@ -5,20 +5,21 @@ import torch.nn.functional as F
 from collections import namedtuple
 from packaging import version
 
-AttentionConfig = namedtuple('AttentionConfig', ['enable_flash', 'enable_math', 'enable_mem_efficient'])
+AttentionConfig = namedtuple(
+    "AttentionConfig", ["enable_flash", "enable_math", "enable_mem_efficient"]
+)
+
 
 class Attend(nn.Module):
-    def __init__(
-        self,
-        dropout = 0.,
-        flash = False
-    ):
+    def __init__(self, dropout=0.0, flash=False):
         super().__init__()
         self.dropout = dropout
         self.attn_dropout = nn.Dropout(dropout)
 
         self.flash = flash
-        assert not (flash and version.parse(torch.__version__) < version.parse('2.0.0')), 'in order to use flash attention, you must be using pytorch 2.0 or above'
+        assert not (
+            flash and version.parse(torch.__version__) < version.parse("2.0.0")
+        ), "in order to use flash attention, you must be using pytorch 2.0 or above"
 
         # determine efficient attention configs for cuda and cpu
 
@@ -28,17 +29,24 @@ class Attend(nn.Module):
         if not torch.cuda.is_available() or not flash:
             return
 
-        device_properties = torch.cuda.get_device_properties(torch.device('cuda'))
+        device_properties = torch.cuda.get_device_properties(torch.device("cuda"))
 
         if device_properties.major == 8 and device_properties.minor == 0:
-            print('A100 GPU detected, using flash attention if input tensor is on cuda')
+            print("A100 GPU detected, using flash attention if input tensor is on cuda")
             self.cuda_config = AttentionConfig(True, False, False)
         else:
-            print('Non-A100 GPU detected, using math or mem efficient attention if input tensor is on cuda')
+            print(
+                "Non-A100 GPU detected, using math or mem efficient attention if input tensor is on cuda"
+            )
             self.cuda_config = AttentionConfig(False, True, True)
 
     def flash_attn(self, q, k, v):
-        _, heads, q_len, _, k_len, is_cuda, device = *q.shape, k.shape[-2], q.is_cuda, q.device
+        _, heads, q_len, _, k_len, is_cuda, device = (
+            *q.shape,
+            k.shape[-2],
+            q.is_cuda,
+            q.device,
+        )
 
         q, k, v = map(lambda t: t.contiguous(), (q, k, v))
 
@@ -50,8 +58,7 @@ class Attend(nn.Module):
 
         with torch.backends.cuda.sdp_kernel(**config._asdict()):
             out = F.scaled_dot_product_attention(
-                q, k, v,
-                dropout_p = self.dropout if self.training else 0.
+                q, k, v, dropout_p=self.dropout if self.training else 0.0
             )
 
         return out
@@ -78,7 +85,7 @@ class Attend(nn.Module):
 
         # attention
 
-        attn = sim.softmax(dim = -1)
+        attn = sim.softmax(dim=-1)
         attn = self.attn_dropout(attn)
 
         # aggregate values

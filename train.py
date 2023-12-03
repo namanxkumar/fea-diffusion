@@ -8,21 +8,47 @@ import wandb
 
 from pathlib import Path
 
-parser = argparse.ArgumentParser(description='Train model.')
+parser = argparse.ArgumentParser(description="Train model.")
 
-parser.add_argument('--data_dir', type=str, default='data', help='Data directory.')
-parser.add_argument('--sample_data_dir', type=str, default='sample_data', help='Sample data directory.')
-parser.add_argument('--num_sample_conditions_per_plate', type=int, default=1, help='Number of sample conditions per plate.')
-parser.add_argument('--results_dir', type=str, default='results', help='Results directory.')
-parser.add_argument('--image_size', type=int, default=256, help='Image size.')
-parser.add_argument('--batch_size', type=int, default=16, help='Batch size.')
-parser.add_argument('--num_gradient_accumulation_steps', type=int, default=1, help='Number of gradient accumulation steps.')
-parser.add_argument('--num_steps', type=int, default=10000, help='Number of steps.')
-parser.add_argument('--num_steps_per_milestone', type=int, default=500, help='Number of steps per milestone.')
-parser.add_argument('--ema_steps_per_milestone', type=int, default=10, help='EMA steps per milestone.')
-parser.add_argument('--learning_rate', type=float, default=3e-4, help='Learning rate.')
-parser.add_argument('--loss_type', type=str, default='l1', help='Loss type.')
-parser.add_argument('--checkpoint', type=str, default=None, help='Checkpoint to load from (should be in results folder).')
+parser.add_argument("--data_dir", type=str, default="data", help="Data directory.")
+parser.add_argument(
+    "--sample_data_dir", type=str, default="sample_data", help="Sample data directory."
+)
+parser.add_argument(
+    "--num_sample_conditions_per_plate",
+    type=int,
+    default=1,
+    help="Number of sample conditions per plate.",
+)
+parser.add_argument(
+    "--results_dir", type=str, default="results", help="Results directory."
+)
+parser.add_argument("--image_size", type=int, default=256, help="Image size.")
+parser.add_argument("--batch_size", type=int, default=16, help="Batch size.")
+parser.add_argument(
+    "--num_gradient_accumulation_steps",
+    type=int,
+    default=1,
+    help="Number of gradient accumulation steps.",
+)
+parser.add_argument("--num_steps", type=int, default=10000, help="Number of steps.")
+parser.add_argument(
+    "--num_steps_per_milestone",
+    type=int,
+    default=500,
+    help="Number of steps per milestone.",
+)
+parser.add_argument(
+    "--ema_steps_per_milestone", type=int, default=10, help="EMA steps per milestone."
+)
+parser.add_argument("--learning_rate", type=float, default=3e-4, help="Learning rate.")
+parser.add_argument("--loss_type", type=str, default="l1", help="Loss type.")
+parser.add_argument(
+    "--checkpoint",
+    type=str,
+    default=None,
+    help="Checkpoint to load from (should be in results folder).",
+)
 
 args = parser.parse_args()
 
@@ -34,16 +60,29 @@ wandb.define_metric("step")
 wandb.define_metric("train_loss", step_metric="step")
 wandb.define_metric("sample_loss", step_metric="step")
 
+
 def inject_function(step, loss, sample_loss, image_filenames, milestone):
-    if sample_loss is not None and image_filenames is not None and milestone is not None:
-        artifact = wandb.Artifact(name=f'checkpoint-{wandb.run.id}', type='model')
-        wandb.log({'step': step, 'train_loss': loss, 'sample_loss': sample_loss, 'samples': [wandb.Image(image) for image in image_filenames]})
-        artifact.add_file(Path(args.results_dir) / f'model-{milestone}.zip')
+    if (
+        sample_loss is not None
+        and image_filenames is not None
+        and milestone is not None
+    ):
+        artifact = wandb.Artifact(name=f"checkpoint-{wandb.run.id}", type="model")
+        wandb.log(
+            {
+                "step": step,
+                "train_loss": loss,
+                "sample_loss": sample_loss,
+                "samples": [wandb.Image(image) for image in image_filenames],
+            }
+        )
+        artifact.add_file(Path(args.results_dir) / f"model-{milestone}.zip")
         wandb.log_artifact(artifact)
     elif sample_loss is not None:
-        wandb.log({'step': step, 'train_loss': loss, 'sample_loss': sample_loss})
+        wandb.log({"step": step, "train_loss": loss, "sample_loss": sample_loss})
     else:
-        wandb.log({'step': step, 'train_loss': loss})
+        wandb.log({"step": step, "train_loss": loss})
+
 
 # model = UNet(
 #     input_dim=64,
@@ -53,10 +92,10 @@ def inject_function(step, loss, sample_loss, image_filenames, milestone):
 
 model = FDNUNet(
     input_dim=64,
-    num_channels=2, # geometry (2)
+    num_channels=2,  # geometry (2)
     # num_condition_channels=1, # geometry (1)
-    num_auxiliary_condition_channels=3, # constraints (1) + force (2)
-    num_stages=4
+    num_auxiliary_condition_channels=3,  # constraints (1) + force (2)
+    num_stages=4,
 )
 
 trainer = Trainer(

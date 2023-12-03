@@ -3,6 +3,7 @@ import pyvista as pv
 from PIL import Image, ImageOps
 import matplotlib.pyplot as plt
 
+
 def calculate_accuracy(mesh_file, displacement_x_file, displacement_y_file):
     mesh = pv.read(mesh_file)
     cords = np.array(mesh.points)[:, :2]
@@ -55,7 +56,6 @@ def calculate_accuracy(mesh_file, displacement_x_file, displacement_y_file):
     predicted_displacement = predicted_displacement / 255.0
     predicted_displacement = ((predicted_displacement * 2) - 1) * 0.05
 
-
     x1 = pixels_min[:, 0]
     y1 = pixels_min[:, 1]
     x2 = pixels_max[:, 0]
@@ -85,7 +85,6 @@ def calculate_accuracy(mesh_file, displacement_x_file, displacement_y_file):
 
     l1_loss = lambda y_predicted, y: np.mean(np.abs(y_predicted - y))
     # print(geometry.shape, x1.shape)
-
 
     def bilinear_interpolation(x1, x2, y1, y2, x, y, q11, q12, q21, q22):
         np.seterr(invalid="ignore")
@@ -126,7 +125,6 @@ def calculate_accuracy(mesh_file, displacement_x_file, displacement_y_file):
 
         # return np.einsum('CBij,CBji->CBi', (np.einsum('CBij,CBjk->CBik',a,b)), c)
 
-
     y_predicted = bilinear_interpolation(x1, x2, y1, y2, x, y, q11, q12, q21, q22)
 
     ground_truth_displacement = np.clip(ground_truth_displacement, -0.05, 0.05)
@@ -141,7 +139,8 @@ def calculate_accuracy(mesh_file, displacement_x_file, displacement_y_file):
     # y_predicted = q22.T
     y_predicted_resultant = ((y_predicted[:, 0]) ** 2 + (y_predicted[:, 1]) ** 2) ** 0.5
     ground_truth_displacement_resultant = (
-        ((ground_truth_displacement[:, 0]) ** 2) + (ground_truth_displacement[:, 1]) ** 2
+        ((ground_truth_displacement[:, 0]) ** 2)
+        + (ground_truth_displacement[:, 1]) ** 2
     ) ** 0.5
 
     # y_predicted_resultant = np.delete(y_predicted_resultant, np.where(np.logical_or(ground_truth_displacement_resultant > 0.05**2, ground_truth_displacement_resultant < -0.05**2)))
