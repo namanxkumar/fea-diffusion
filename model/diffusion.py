@@ -63,7 +63,7 @@ class FEADataset(Dataset):
         self.image_size = image_size
         self.augmentation = augmentation
 
-        self.number_of_plate_geometries = len(list(self.path.glob("*")))
+        self.number_of_plate_geometries = len([directory for directory in self.path.iterdir() if directory.is_dir()])
 
         self.conditions_per_plate_geometry = conditions_per_plate
 
@@ -573,29 +573,30 @@ class Trainer:
         total_sample_loss /= num_batches
 
         if save:
+            num_plates = self.sample_dataset.number_of_plate_geometries
+            num_conditions = self.sample_dataset.conditions_per_plate_geometry
+            num_steps = self.sample_dataset.num_steps
             for i, image in enumerate(sampled_images):
+                plate = (i // (num_conditions * num_steps)) + 1
+                condition = (i % (num_conditions * num_steps)) // num_steps + 1
+                step = (i % (num_conditions * num_steps)) % num_steps + 1
+                
                 if exists(milestone):
-                    plt.imsave(
-                        str(self.results_folder / f"sample-{i}-{milestone}.png"),
-                        torch.squeeze(image).cpu().detach().numpy(),
-                        cmap="Greys",
-                        vmin=0,
-                        vmax=255,
-                    )
-                    image_filenames.append(
-                        str(self.results_folder / f"sample-{i}-{milestone}.png")
-                    )
-                    # image.save(str(self.results_folder / f'sample-{i}-{milestone}.png'))
+                    pathname = self.results_folder / f"{milestone}" / f"{plate}" / f"{condition}"
                 else:
-                    plt.imsave(
-                        str(self.results_folder / f"sample-{i}.png"),
-                        torch.squeeze(image).cpu().detach().numpy(),
-                        cmap="Greys",
-                        vmin=0,
-                        vmax=255,
-                    )
-                    image_filenames.append(str(self.results_folder / f"sample-{i}.png"))
-                    # image.save(str(self.results_folder / f'sample-{i}.png'))
+                    pathname = self.results_folder / f"{plate}" / f"{condition}"
+                pathname.mkdir(parents=True, exist_ok=True)
+
+                plt.imsave(
+                    str(pathname / f"sample-{step}.png"),
+                    torch.squeeze(image).cpu().detach().numpy(),
+                    cmap="Greys",
+                    vmin=0,
+                    vmax=255,
+                )
+                image_filenames.append(
+                    str(pathname / f"sample-{step}.png")
+                )
         else:
             image_filenames = None
         return sampled_images, image_filenames, total_sample_loss
