@@ -23,6 +23,8 @@ def generate_data(
     num_steps_per_condition: int = 11,
     save_meshes=False,
 ):
+    assert num_steps_per_condition > 1, "Must have at least 2 steps per condition."
+
     verify_directory(data_dir)
 
     generator = MeshGenerator(

@@ -2,6 +2,7 @@
 /__pycache__
 datagen/__pycache__
 model/__pycache__
+metrics/__pycache__
 data/
 results/
 part.*

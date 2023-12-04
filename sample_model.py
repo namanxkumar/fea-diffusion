@@ -82,4 +82,4 @@ trainer.load_checkpoint(args.checkpoint)
 # if args.successive_sampling:
 #     trainer.successive_sample_and_save(milestone = args.milestone, use_ema_model=args.use_ema_model)
 # else:
-trainer.sample_and_save(milestone=args.milestone, use_ema_model=args.use_ema_model)
+trainer.sample_and_save(milestone=args.milestone, use_ema_model=args.use_ema_model, progress_bar=True)

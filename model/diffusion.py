@@ -59,6 +59,7 @@ class FEADataset(Dataset):
         assert (
             self.path.exists()
         ), f"Error: Dataset directory {self.path} does not exist."
+        assert num_steps >= 2, "num_steps must be >= 2"
         self.extension = extension
         self.image_size = image_size
         self.augmentation = augmentation
@@ -281,6 +282,9 @@ class Trainer:
         use_batch_split_over_devices: bool = True,
     ):
         super().__init__()
+        assert num_steps_per_condition >= 2, "num_steps_per_condition must be >= 2"
+        assert num_steps_per_sample_condition >= 2, "num_steps_per_sample_condition must be >= 2"
+
         self.accelerator = Accelerator(
             split_batches=use_batch_split_over_devices,
         )
@@ -559,12 +563,14 @@ class Trainer:
             return images, loss
 
     def sample_and_save(
-        self, milestone: Union[int, str] = None, use_ema_model: bool = False, save=True
+        self, milestone: Union[int, str] = None, use_ema_model: bool = False, save=True, progress_bar=False
     ):
         sampled_images = []
         image_filenames = []
         total_sample_loss = 0.0
         num_batches = 0
+        if progress_bar:
+            self.sample_dataloader = tqdm(self.sample_dataloader, desc="Sampling")
         for batch in self.sample_dataloader:
             images, loss = self.sample(batch, use_ema_model)
             sampled_images += images
@@ -573,29 +579,33 @@ class Trainer:
         total_sample_loss /= num_batches
 
         if save:
-            num_plates = self.sample_dataset.number_of_plate_geometries
             num_conditions = self.sample_dataset.conditions_per_plate_geometry
             num_steps = self.sample_dataset.num_steps
-            for i, image in enumerate(sampled_images):
-                plate = (i // (num_conditions * num_steps)) + 1
-                condition = (i % (num_conditions * num_steps)) // num_steps + 1
-                step = (i % (num_conditions * num_steps)) % num_steps + 1
-                
+            if progress_bar:
+                sampled_images = tqdm(enumerate(sampled_images), desc="Saving")
+            else:
+                sampled_images = enumerate(sampled_images)
+            for i, image in sampled_images:
+                axis = "x" if i % 2 == 0 else "y"
+                index = i // 2
+                plate = (index // (num_conditions * num_steps)) + 1
+                condition = (index % (num_conditions * num_steps)) // num_steps + 1
+                step = (index % (num_conditions * num_steps)) % num_steps + 1
+
                 if exists(milestone):
                     pathname = self.results_folder / f"{milestone}" / f"{plate}" / f"{condition}"
                 else:
                     pathname = self.results_folder / f"{plate}" / f"{condition}"
                 pathname.mkdir(parents=True, exist_ok=True)
-
                 plt.imsave(
-                    str(pathname / f"sample-{step}.png"),
+                    str(pathname / f"sample_{axis}_{step}.png"),
                     torch.squeeze(image).cpu().detach().numpy(),
                     cmap="Greys",
                     vmin=0,
                     vmax=255,
                 )
                 image_filenames.append(
-                    str(pathname / f"sample-{step}.png")
+                    str(pathname / f"sample_{axis}_{step}.png")
                 )
         else:
             image_filenames = None
