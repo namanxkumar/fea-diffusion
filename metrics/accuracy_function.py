@@ -4,7 +4,9 @@ from PIL import Image, ImageOps
 import matplotlib.pyplot as plt
 
 
-def calculate_accuracy(mesh_file, displacement_x_file, displacement_y_file):
+def calculate_accuracy_for_one_sample(
+    mesh_file, displacement_x_file, displacement_y_file, image_size
+):
     mesh = pv.read(mesh_file)
     cords = np.array(mesh.points)[:, :2]
     x_max = np.max(cords[:, 0])
@@ -12,11 +14,10 @@ def calculate_accuracy(mesh_file, displacement_x_file, displacement_y_file):
 
     if x_max <= y_max:
         cords = np.stack((cords[:, 0] + (1 - (x_max)) / 2, cords[:, 1]), axis=1)
-
     else:
         cords = np.stack((cords[:, 0], cords[:, 1] + (1 - (y_max)) / 2), axis=1)
 
-    cords = cords * 256
+    cords = cords * image_size
 
     ground_truth_displacement = np.array(mesh.point_data["u"])[:, :2]
 
@@ -29,7 +30,7 @@ def calculate_accuracy(mesh_file, displacement_x_file, displacement_y_file):
         # ImageOps.grayscale(Image.open("outputs_displacement_x_10.png").resize((256, 256)).transpose(Image.FLIP_TOP_BOTTOM))
         ImageOps.grayscale(
             Image.open(displacement_x_file)
-            .resize((256, 256))
+            .resize((image_size, image_size))
             .transpose(Image.ROTATE_270)
         )
         # ImageOps.grayscale(Image.open("outputs_displacement_x_10.png").resize((256, 256)))
@@ -38,7 +39,7 @@ def calculate_accuracy(mesh_file, displacement_x_file, displacement_y_file):
         # ImageOps.grayscale(Image.open("outputs_displacement_y_10.png").resize((256, 256)).transpose(Image.FLIP_TOP_BOTTOM))
         ImageOps.grayscale(
             Image.open(displacement_y_file)
-            .resize((256, 256))
+            .resize((image_size, image_size))
             .transpose(Image.ROTATE_270)
         )
         # ImageOps.grayscale(Image.open("outputs_displacement_y_10.png").resize((256, 256)))
@@ -148,7 +149,7 @@ def calculate_accuracy(mesh_file, displacement_x_file, displacement_y_file):
 
     # print(q11.shape, ground_truth_displacement.shape)
     # print(l1_loss(q11, ground_truth_displacement))
-    print(l1_loss(y_predicted_resultant, ground_truth_displacement_resultant))
+    return l1_loss(y_predicted_resultant, ground_truth_displacement_resultant)
     # x = np.abs(y_predicted_resultant - ground_truth_displacement_resultant)
     # print(x)
     # plt.imshow(1 - geometry[0].T / 255, cmap="Greys")
