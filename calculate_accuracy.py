@@ -27,7 +27,7 @@ parser.add_argument("--image_size", type=int, default=256, help="Image size.")
 
 args = parser.parse_args()
 
-loss_values, mean_loss = calculate_accuracy(
+_, _, _, mean_absolute_error_values, mean_squared_error_values, root_mean_squared_error_values = calculate_accuracy(
     num_plates=args.num_plates,
     num_conditions_per_plate=args.num_conditions_per_plate,
     num_steps=args.num_steps_per_condition,
@@ -36,5 +36,6 @@ loss_values, mean_loss = calculate_accuracy(
     generated_samples_dir=args.generated_samples_dir,
 )
 
-print("Loss Values:", loss_values)
-print("Mean Loss:", mean_loss)
+print("Mean absolute error: {}".format(mean_absolute_error_values))
+print("Mean squared error: {}".format(mean_squared_error_values))
+print("Root mean squared error: {}".format(root_mean_squared_error_values))

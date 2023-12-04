@@ -22,7 +22,9 @@ def calculate_accuracy(
     assert ground_truth_data_path.exists(), "Ground truth data directory does not exist."
     assert generated_samples_path.exists(), "Generated samples directory does not exist."
 
-    loss_values = np.zeros(total_samples)
+    mean_absolute_error_values = np.zeros(total_samples)
+    mean_squared_error_values = np.zeros(total_samples)
+    root_mean_squared_error_values = np.zeros(total_samples)
 
     if progress_bar:
         total_samples = tqdm(range(total_samples), desc="Calculating accuracy")
@@ -62,8 +64,8 @@ def calculate_accuracy(
             / "sample_y_{}.png".format(step_index)
         )
 
-        loss_values[index] = calculate_accuracy_for_one_sample(
+        mean_absolute_error_values[index], mean_squared_error_values[index], root_mean_squared_error_values = calculate_accuracy_for_one_sample(
             mesh_path, x_displacement_path, y_displacement_path, image_size=image_size
         )
 
-    return loss_values, np.mean(loss_values)
+    return mean_absolute_error_values, mean_squared_error_values, root_mean_squared_error_values, np.mean(mean_absolute_error_values), np.mean(mean_squared_error_values), np.mean(root_mean_squared_error_values)

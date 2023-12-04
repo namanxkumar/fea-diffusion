@@ -84,7 +84,7 @@ def calculate_accuracy_for_one_sample(
     x2 = np.repeat(x2[np.newaxis, ...], 2, axis=0)
     y2 = np.repeat(y2[np.newaxis, ...], 2, axis=0)
 
-    l1_loss = lambda y_predicted, y: np.mean(np.abs(y_predicted - y))
+    
     # print(geometry.shape, x1.shape)
 
     def bilinear_interpolation(x1, x2, y1, y2, x, y, q11, q12, q21, q22):
@@ -149,7 +149,10 @@ def calculate_accuracy_for_one_sample(
 
     # print(q11.shape, ground_truth_displacement.shape)
     # print(l1_loss(q11, ground_truth_displacement))
-    return l1_loss(y_predicted_resultant, ground_truth_displacement_resultant)
+    mean_absolute_error = np.mean(np.abs(y_predicted_resultant - ground_truth_displacement_resultant))
+    mean_squared_error = np.mean((y_predicted_resultant - ground_truth_displacement_resultant) ** 2)
+    root_mean_squared_error = np.sqrt(mean_squared_error)
+    return mean_absolute_error, mean_squared_error, root_mean_squared_error
     # x = np.abs(y_predicted_resultant - ground_truth_displacement_resultant)
     # print(x)
     # plt.imshow(1 - geometry[0].T / 255, cmap="Greys")
