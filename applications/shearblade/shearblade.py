@@ -21,7 +21,7 @@ from sfepy.discrete.fem.utils import refine_mesh
 from sfepy import data_dir
 
 # Fix the mesh file name if you run this file outside the SfePy directory.
-filename_mesh = 'cantilever.mesh'
+filename_mesh = 'shearblade.mesh'
 
 refinement_level = 0
 filename_mesh = refine_mesh(filename_mesh, refinement_level)
@@ -42,13 +42,13 @@ options = {
 
 regions = {
     'Omega' : 'all',
-    'Constraint' : ('vertices in (x < 0.01)', 'facet'),
-    'Force' : ('vertex 3', 'vertex'),
+    'Constraint' : ('vertices in (y > 0.74)', 'facet'),
+    'Force' : ('vertex 1', 'vertex'),
 }
 
 materials = {
     'Asphalt' : ({'D': stiffness_from_youngpoisson(2, young, poisson)},),
-    'Load' : ({'.val' : [0.0, -1000.0]},),
+    'Load' : ({'.val' : [100.0, 2700.0]},),
 }
 
 fields = {

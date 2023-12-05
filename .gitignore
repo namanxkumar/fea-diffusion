@@ -4,6 +4,8 @@ datagen/__pycache__
 model/__pycache__
 metrics/__pycache__
 applications/__pycache__
+applications/cantilever/__pycache__
+applications/shearblade/__pycache__
 data/
 results/
 part.*
