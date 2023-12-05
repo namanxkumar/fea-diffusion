@@ -21,7 +21,7 @@ from sfepy.discrete.fem.utils import refine_mesh
 from sfepy import data_dir
 
 # Fix the mesh file name if you run this file outside the SfePy directory.
-filename_mesh = 'geofea.mesh'
+filename_mesh = 'cantilever.mesh'
 
 refinement_level = 0
 filename_mesh = refine_mesh(filename_mesh, refinement_level)
@@ -31,18 +31,19 @@ output_dir = '.' # set this to a valid directory you have write access to
 young = 210000.0 # Young's modulus [MPa]
 poisson = 0.3  # Poisson's ratio
 
-# def save_regions(out, pb, state, extend=False):
-#     pb.save_regions_as_groups('regions')
+def save_regions(out, pb, state, extend=False):
+    pb.save_regions_as_groups('regions')
+    return out
 
 options = {
     'output_dir' : output_dir,
-    # 'post_process_hook' : 'save_regions',
+    'post_process_hook' : 'save_regions',
 }
 
 regions = {
     'Omega' : 'all',
-    'Left' : ('vertices in (x < 0.2)', 'facet'),
-    'Top' : ('vertex 2', 'vertex'),
+    'Constraint' : ('vertices in (x < 0.01)', 'facet'),
+    'Force' : ('vertices in (x > 0.99)', 'facet'),
 }
 
 materials = {
@@ -57,7 +58,7 @@ fields = {
 equations = {
    'balance_of_forces' :
    """dw_lin_elastic.2.Omega(Asphalt.D, v, u)
-      = dw_point_load.0.Top(Load.val, v)""",
+      = dw_point_load.0.Force(Load.val, v)""",
 }
 
 variables = {
@@ -67,7 +68,7 @@ variables = {
 
 ebcs = {
     # 'XSym' : ('Left', {'u.1' : 0.0}),
-    'Constraint' : ('Left', {'u.all' : 0.0}),
+    'Constraint' : ('Constraint', {'u.all' : 0.0}),
 }
 
 solvers = {
