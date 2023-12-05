@@ -43,7 +43,7 @@ options = {
 regions = {
     'Omega' : 'all',
     'Constraint' : ('vertices in (x < 0.01)', 'facet'),
-    'Force' : ('vertices in (x > 0.99)', 'facet'),
+    'Force' : ('vertex 3', 'vertex'),
 }
 
 materials = {

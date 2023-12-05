@@ -535,7 +535,11 @@ class Trainer:
         previous_iteration = sample["previous_iteration"].to(self.device)
         # iteration_index = sample['iteration_index'].to(self.device)
         if type(self.model) == FDNUNet:
-            prediction = self.model(previous_iteration, conditions)
+            prediction = (
+                self.model(previous_iteration, conditions)
+                if not use_ema_model
+                else self.ema.ema_model(previous_iteration, conditions)
+            )
         else:
             # raise NotImplementedError('Only FDNUNet is supported')
             prediction = (
