@@ -4,8 +4,8 @@ from PIL import Image, ImageOps
 import matplotlib.pyplot as plt
 
 
-def calculate_accuracy_for_one_sample(
-    mesh_file, displacement_x_file, displacement_y_file, image_size
+def calculate_predicted_displacement_at_nodes(
+    mesh_file, displacement_x_file, displacement_y_file, geometry, image_size
 ):
     mesh = pv.read(mesh_file)
     cords = np.array(mesh.points)[:, :2]
@@ -19,12 +19,11 @@ def calculate_accuracy_for_one_sample(
 
     cords = cords * image_size
 
-    ground_truth_displacement = np.array(mesh.point_data["u"])[:, :2]
-
     pixels_min = np.floor(cords)
     pixels_min = pixels_min.astype(int)
     pixels_max = np.ceil(cords)
     pixels_max = pixels_max.astype(int)
+    pixels_max = np.clip(pixels_max, 1, image_size)
 
     predicted_displacement_x = np.array(
         # ImageOps.grayscale(Image.open("outputs_displacement_x_10.png").resize((256, 256)).transpose(Image.FLIP_TOP_BOTTOM))
@@ -44,12 +43,12 @@ def calculate_accuracy_for_one_sample(
         )
         # ImageOps.grayscale(Image.open("outputs_displacement_y_10.png").resize((256, 256)))
     ).squeeze()
-    # geometry = np.array(
-    #     ImageOps.grayscale(
-    #         Image.open("input.png").resize((256, 256)).transpose(Image.ROTATE_270)
-    #     )
-    # ).squeeze()
-    # geometry = geometry / 255.0
+    geometry = np.array(
+        ImageOps.grayscale(
+            Image.open(geometry).resize((256, 256)).transpose(Image.ROTATE_270)
+        )
+    ).squeeze()
+    geometry = 1 - geometry / 255.0
     # geometry = np.stack((geometry, geometry), axis=0)
     predicted_displacement = np.stack(
         (predicted_displacement_x, predicted_displacement_y), axis=0
@@ -57,19 +56,56 @@ def calculate_accuracy_for_one_sample(
     predicted_displacement = predicted_displacement / 255.0
     predicted_displacement = ((predicted_displacement * 2) - 1) * 0.05
 
-    x1 = pixels_min[:, 0]
-    y1 = pixels_min[:, 1]
-    x2 = pixels_max[:, 0]
-    y2 = pixels_max[:, 1]
+    x1 = pixels_min[:, 0] + 1
+    y1 = pixels_min[:, 1] - 1
+    x2 = pixels_max[:, 0] + 1
+    y2 = pixels_max[:, 1] - 1
+    # x1 = pixels_min[:, 0]
+    # y1 = pixels_min[:, 1]
+    # x2 = pixels_max[:, 0]
+    # y2 = pixels_max[:, 1]
+    
+    x1 = np.clip(x1, 1, image_size)
+    y1 = np.clip(y1, 1, image_size)
+    x2 = np.clip(x2, 1, image_size)
+    y2 = np.clip(y2, 1, image_size)
+    # remove pixels that lie outside image geometry
+    # plt.imshow(geometry.T, cmap="Greys")
+    # plt.colorbar()
+    # plt.scatter(geometry.T[:1], geometry.T[], color = "black", s=0.5)
+    
+    locations = np.argwhere(geometry[x1 - 1, y1 - 1] == 0)[:, :2]
+    # print(locations.shape)
+    # plt.scatter(x1[locations[:, 0]], y1[locations[:, 0]], color = "red", s=0.3)
+    
+    x1[locations[:, 0]] = x1[locations[:, 0]] + 1
+    y1[locations[:, 0]] = y1[locations[:, 0]] + 1
+    x1 = np.clip(x1, 1, image_size)
+    y1 = np.clip(y1, 1, image_size)
 
-    # locations = np.argwhere(geometry[x1 - 1, y1 - 1] == 0)
-    # print(locations)
-    # x1[locations] = x2[locations]
-    # y1[locations] = y2[locations]
-    # locations = np.argwhere(geometry[x2 - 1, y2 - 1] == 0)
-    # print(locations)
-    # x2[locations] = x1[locations]
-    # y2[locations] = y1[locations]
+    # locations = np.argwhere(geometry[x1 - 1, y1 - 1] == 0)[:, :2]
+    # print(locations.shape)
+    # plt.scatter(x1[locations[:, 0]], y1[locations[:, 0]], color = "green", s=0.5)
+    # plt.scatter(x1[locations[:, 0]], y1[locations[:, 0]], color = "green", s=0.3)
+
+    locations = np.argwhere(geometry[x2 - 1, y2 - 1] == 0)[:, :2]
+    # print(locations.shape)
+    # plt.scatter(x2[locations[:, 0]], y2[locations[:, 0]], color = "blue", s=0.3)
+    
+    # plt.colorbar()
+    # plt.xlim(0,256)
+    # plt.ylim(0,256)
+
+    x2[locations[:, 0]] = x2[locations[:, 0]] - 1
+    y2[locations[:, 0]] = y2[locations[:, 0]] - 1
+    x2 = np.clip(x2, 1, image_size)
+    y2 = np.clip(y2, 1, image_size)
+    # locations = np.argwhere(geometry[x2 - 1, y2 - 1] == 0)[:, :2]
+    # print(locations.shape)
+    # plt.scatter(x2[locations[:, 0]], y2[locations[:, 0]], color = "yellow", s=0.3)
+    # plt.show()
+    # make sure no pixel is moe than 256
+
     x = cords[:, 0]
     y = cords[:, 1]
     q11 = predicted_displacement[:, x1 - 1, y1 - 1]
@@ -84,11 +120,10 @@ def calculate_accuracy_for_one_sample(
     x2 = np.repeat(x2[np.newaxis, ...], 2, axis=0)
     y2 = np.repeat(y2[np.newaxis, ...], 2, axis=0)
 
-    
     # print(geometry.shape, x1.shape)
 
     def bilinear_interpolation(x1, x2, y1, y2, x, y, q11, q12, q21, q22):
-        np.seterr(invalid="ignore")
+        np.seterr(all = "ignore")
         f_xy1 = ((x2 - x) / (x2 - x1)) * q11 + ((x - x1) / (x2 - x1)) * q21
 
         locations = np.argwhere(np.isnan(f_xy1))
@@ -126,8 +161,20 @@ def calculate_accuracy_for_one_sample(
 
         # return np.einsum('CBij,CBji->CBi', (np.einsum('CBij,CBjk->CBik',a,b)), c)
 
-    y_predicted = bilinear_interpolation(x1, x2, y1, y2, x, y, q11, q12, q21, q22)
+    
 
+    return bilinear_interpolation(x1, x2, y1, y2, x, y, q11, q12, q21, q22)
+
+
+def calculate_accuracy_for_one_sample(
+    mesh_file, displacement_x_file, displacement_y_file, geometry, image_size
+):
+    mesh = pv.read(mesh_file)
+    y_predicted = calculate_predicted_displacement_at_nodes(
+        mesh_file, displacement_x_file, displacement_y_file, geometry, image_size
+    )
+
+    ground_truth_displacement = np.array(mesh.point_data["u"])[:, :2]
     ground_truth_displacement = np.clip(ground_truth_displacement, -0.05, 0.05)
     # print(y_predicted)
     # print(y_predicted.shape, ground_truth_displacement.shape)
@@ -149,16 +196,14 @@ def calculate_accuracy_for_one_sample(
 
     # print(q11.shape, ground_truth_displacement.shape)
     # print(l1_loss(q11, ground_truth_displacement))
-    mean_absolute_error = np.mean(np.abs(y_predicted_resultant - ground_truth_displacement_resultant))
-    mean_squared_error = np.mean((y_predicted_resultant - ground_truth_displacement_resultant) ** 2)
+    mean_absolute_error = np.mean(
+        np.abs(y_predicted_resultant - ground_truth_displacement_resultant)
+    )
+    mean_squared_error = np.mean(
+        (y_predicted_resultant - ground_truth_displacement_resultant) ** 2
+    )
     root_mean_squared_error = np.sqrt(mean_squared_error)
     return mean_absolute_error, mean_squared_error, root_mean_squared_error
     # x = np.abs(y_predicted_resultant - ground_truth_displacement_resultant)
     # print(x)
-    # plt.imshow(1 - geometry[0].T / 255, cmap="Greys")
-    # plt.colorbar()
-    # plt.scatter(cords[:, 0], cords[:, 1], c=x, cmap="autumn", s=0.5)
-    # plt.colorbar()
-    # # plt.xlim(0,256)
-    # # plt.ylim(0,256)
-    # plt.show()
+    

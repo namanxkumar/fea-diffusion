@@ -63,9 +63,14 @@ def calculate_accuracy(
             / str(condition_index)
             / "sample_y_{}.png".format(step_index)
         )
+        geometry_path = (
+            ground_truth_data_path
+            / str(plate_index)
+            / "input.png"
+        )
 
         mean_absolute_error_values[index], mean_squared_error_values[index], root_mean_squared_error_values = calculate_accuracy_for_one_sample(
-            mesh_path, x_displacement_path, y_displacement_path, image_size=image_size
+            mesh_path, x_displacement_path, y_displacement_path, geometry_path, image_size=image_size
         )
 
     return mean_absolute_error_values, mean_squared_error_values, root_mean_squared_error_values, np.mean(mean_absolute_error_values), np.mean(mean_squared_error_values), np.mean(root_mean_squared_error_values)
