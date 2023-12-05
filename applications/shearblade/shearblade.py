@@ -48,7 +48,7 @@ regions = {
 
 materials = {
     'Asphalt' : ({'D': stiffness_from_youngpoisson(2, young, poisson)},),
-    'Load' : ({'.val' : [100.0, 2700.0]},),
+    'Load' : ({'.val' : [100.0, 3000.0]},),
 }
 
 fields = {
