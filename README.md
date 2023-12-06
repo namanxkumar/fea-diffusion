@@ -1,6 +1,5 @@
-# fea_diffusion
-
-git clone https://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@github.com/namanxkumar/fea-diffusion.git
+### FEA with Generative Models
+![Model Architecture](ModelArchitecture.png)
 
 ### Setup
 - Create a Conda env with python > 3.8
@@ -20,7 +19,7 @@ git clone https://github_pat_11AEURNHA0vRxsFowVrRhW_x141nNf5baFWVpPRBv9EIgLCOfYM
   ```sh
   pip install torch torchvision einops tqdm accelerate ema_pytorch jaxlib wandb
   ```
-- Login to wandb via
+- [Optional] To use wandb logging, login to wandb via
   ```sh
   wandb login
   ```
