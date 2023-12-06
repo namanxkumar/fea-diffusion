@@ -1,3 +1,6 @@
+### FEA with Generative Models
+![Model Architecture](ModelArchitecture.png)
+
 ### Setup
 - Create a Conda env with python > 3.8
 - Install shapely and sfepy via conda
