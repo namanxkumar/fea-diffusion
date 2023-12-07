@@ -2,9 +2,9 @@ from model.diffusion import Trainer
 from model.unet import UNet
 from model.fdnunet import FDNUNet
 
-import argparse
+import os
 
-import wandb
+import argparse
 
 from pathlib import Path
 
@@ -49,17 +49,22 @@ parser.add_argument(
     default=None,
     help="Checkpoint to load from (should be in results folder).",
 )
+parser.add_argument("--use_wandb", action="store_true", help="Use wandb.")
+parser.add_argument("--wandb_project", type=str, help="Wandb project name.")
+parser.add_argument("--wandb_restrict_cache", type=int, default=10, help="Restrict wandb cache.")
 
 args = parser.parse_args()
 
-run = wandb.init(
+if args.use_wandb:
+    import wandb
+    assert args.wandb_project is not None, "Must specify wandb project name."
+    run = wandb.init(
     # set the wandb project where this run will be logged
-    project="fea-diffusion-model-2",
-)
-wandb.define_metric("step")
-wandb.define_metric("train_loss", step_metric="step")
-wandb.define_metric("sample_loss", step_metric="step")
-
+        project=args.wandb_project,
+    )
+    wandb.define_metric("step")
+    wandb.define_metric("train_loss", step_metric="step")
+    wandb.define_metric("sample_loss", step_metric="step")
 
 def inject_function(step, loss, sample_loss, image_filenames, milestone):
     if (
@@ -67,6 +72,9 @@ def inject_function(step, loss, sample_loss, image_filenames, milestone):
         and image_filenames is not None
         and milestone is not None
     ):
+        if args.wandb_restrict_cache is not None:
+            os.system(f"wandb artifact cache cleanup {args.wandb_restrict_cache}")
+
         artifact = wandb.Artifact(name=f"checkpoint-{wandb.run.id}", type="model")
         wandb.log(
             {
@@ -117,5 +125,8 @@ trainer = Trainer(
 if args.checkpoint is not None:
     trainer.load_checkpoint(args.checkpoint)
 
-trainer.train(wandb_inject_function=inject_function)
-wandb.finish()
+if args.use_wandb:
+    trainer.train(wandb_inject_function=inject_function)
+    wandb.finish()
+else:
+    trainer.train()
