@@ -9,6 +9,34 @@ import sys
 from collections import OrderedDict
 from typing import List, Tuple, OrderedDict, Dict
 from copy import deepcopy
+import numpy as np
+import pyvista as pv
+from sklearn.cluster import KMeans, AgglomerativeClustering
+
+from typing import List, Dict, Tuple
+
+materials = [
+    {"name": "Steel", "youngs_modulus": 210000, "poissons_ratio": 0.3},
+    {"name": "Aluminum", "youngs_modulus": 68900, "poissons_ratio": 0.33},
+    {"name": "Copper", "youngs_modulus": 117000, "poissons_ratio": 0.34},
+    {"name": "Brass", "youngs_modulus": 97000, "poissons_ratio": 0.33},
+    {"name": "Titanium", "youngs_modulus": 105000, "poissons_ratio": 0.34},
+    {"name": "Stainless Steel", "youngs_modulus": 195000, "poissons_ratio": 0.3},
+    {"name": "Nickel", "youngs_modulus": 207000, "poissons_ratio": 0.31},
+    {"name": "Zinc", "youngs_modulus": 100000, "poissons_ratio": 0.25},
+    {"name": "Lead", "youngs_modulus": 17500, "poissons_ratio": 0.44},
+    {"name": "Magnesium", "youngs_modulus": 46500, "poissons_ratio": 0.35},
+    {"name": "Concrete", "youngs_modulus": 30000, "poissons_ratio": 0.2},
+    {"name": "Wood", "youngs_modulus": 11000, "poissons_ratio": 0.35},
+    {"name": "Glass", "youngs_modulus": 64000, "poissons_ratio": 0.22},
+    {"name": "Plastic", "youngs_modulus": 3000, "poissons_ratio": 0.4},
+    {"name": "Rubber", "youngs_modulus": 0.01, "poissons_ratio": 0.5},
+    {"name": "Bronze", "youngs_modulus": 120000, "poissons_ratio": 0.34},
+    {"name": "Tungsten", "youngs_modulus": 411000, "poissons_ratio": 0.28},
+    {"name": "Silver", "youngs_modulus": 83000, "poissons_ratio": 0.37},
+    {"name": "Gold", "youngs_modulus": 78000, "poissons_ratio": 0.44},
+    {"name": "Platinum", "youngs_modulus": 168000, "poissons_ratio": 0.38}
+]
 
 
 class MeshGenerator:
@@ -19,12 +47,13 @@ class MeshGenerator:
         holes_per_polygon_range=(0, 3),
         points_per_hole_range=(3, 4),
         random_seed=None,
+        num_regions=(2,5)
     ):
         self.num_polygons_range = num_polygons_range
         self.points_per_polygon_range = points_per_polygon_range
         self.holes_per_polygon_range = holes_per_polygon_range
         self.points_per_hole_range = points_per_hole_range
-
+        self.num_regions= num_regions
         self.random = random.Random(random_seed)
 
     @staticmethod
@@ -257,6 +286,7 @@ class MeshGenerator:
         gmsh.write("{}.geo_unrolled".format(name))  # Write the geometry to a file
 
         gmsh.write("{}.{}".format(name, filetype))  # Write the mesh to a file
+        # mesh_path="{}.{}".format(name, filetype)
 
         if view_mesh:
             if "close" not in sys.argv:
@@ -265,11 +295,76 @@ class MeshGenerator:
         gmsh.finalize()
 
         return polygons_ptags, polygons_ltag_ptags
+    
+    def create_regions_with_kmeans(self,mesh_path):
+        mesh = pv.read(mesh_path)
+        coords = np.array(mesh.points)
+        num_clusters = random.randint(5, 20)  # Randomly select number of clusters
+
+        clustering = KMeans(n_clusters=num_clusters)
+        cluster_labels = clustering.fit_predict(coords)
+
+        clustering2_centres = KMeans(n_clusters=5)
+        cluster2_labels_centres = clustering2_centres.fit_predict(clustering.cluster_centers_.reshape(-1, 1))
+
+        new_labels = np.empty_like(cluster_labels)
+        for i in range(num_clusters):
+            points_in_cluster = cluster_labels == i
+            new_labels[points_in_cluster] = cluster2_labels_centres[i]
+
+        region_coordinates = [[] for _ in range(5)]  # Initialize list to store coordinates for each region
+
+        for i in range(num_clusters):
+            points_in_cluster = cluster_labels == i
+            region_idx = int(new_labels[points_in_cluster][0])  # Get the region index for the cluster
+            region_coordinates[region_idx].extend(coords[points_in_cluster])
+
+        return region_coordinates
+
+    def create_regions_with_agglomerative_clustering(self,mesh_path, link):
+        mesh = pv.read(mesh_path)
+        coords = np.array(mesh.points)
+
+        num_regions = 5  # Randomly select number of regions
+        agg_clustering = AgglomerativeClustering(n_clusters=num_regions, linkage=link)
+        region_assignments = agg_clustering.fit_predict(coords)
+
+        region_coordinates = [[] for _ in range(num_regions)]  # Initialize list to store coordinates for each region
+
+        for i in range(num_regions):
+            points_in_region = region_assignments == i
+            region_coordinates[i].extend(coords[points_in_region])
+
+        return region_coordinates
+
+    def create_regions_randomly(self,mesh_path):
+        method = random.choice(["kmeans", "agglomerative"])
+        if method == "kmeans":
+            return self.create_regions_with_kmeans(mesh_path)
+        else:
+            link = random.choice(["complete", "average", "ward"])
+            return self.create_regions_with_agglomerative_clustering(mesh_path, link)
+
+
+    def _assign_materials_to_regions(regions: List[List]) -> Dict[Tuple, List]:
+        materials_dict = {}
+        num_regions = len(regions)
+        
+        # Randomly select material properties for each region
+        for i in range(num_regions):
+            material = random.choice(materials)
+            material_properties = (material["youngs_modulus"], material["poissons_ratio"])
+            materials_dict[material_properties] = regions[i]
+        
+        return materials_dict
+
 
     def sample_conditions(
         self,
+        mesh_path,
         polygons_ptags: List[List[int]],
         polygons_ltag_ptags: List[OrderedDict[int, Tuple[int, int]]],
+
         num_conditions: int = 4,
     ) -> List[Dict]:
         conditions = []
@@ -335,8 +430,13 @@ class MeshGenerator:
                     0 if len(point_forces) >= 1 else 1, len(i_combined_edges_ptags)
                 ),
             )
+            region_coordinates = self.create_regions_randomly(mesh_path)
+            materials_assigned = self.assign_materials_to_regions(region_coordinates)
+
+
 
             condition = {
+                "material_division": dict(materials_assigned),
                 "point_constraints": list(vertices_to_constrain),
                 "edge_constraints": list(edges_to_constrain),
                 "point_forces": list(point_forces),
