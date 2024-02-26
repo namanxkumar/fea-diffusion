@@ -22,7 +22,7 @@ from sfepy.base.base import Struct, output
 from .custom_plotter import plot
 
 import numpy as np
-from typing import Tuple, List
+from typing import Tuple, List, Dict
 import os
 from os import path
 import math
@@ -35,10 +35,12 @@ class FEAnalysis:
         filename: str,
         data_dir: str,
         condition_dir: str,
+        material_division: Dict[Tuple, List],
         force_vertex_tags_magnitudes: List[Tuple[int, Tuple[float, float]]],
         force_edges_tags_magnitudes: List[Tuple[Tuple[int, int], Tuple[int, int]]],
         constraints_vertex_tags: List[int],
         constraints_edges_tags: List[Tuple[int, int]],
+        # regions list 
         youngs_modulus: float = 210000,
         poisson_ratio: float = 0.3,
         num_steps: int = 11,
@@ -57,8 +59,8 @@ class FEAnalysis:
         )
 
         self.mesh = Mesh.from_file(path.join(data_dir, filename))
-        self.domain = FEDomain("domain", self.mesh)
-
+        # might change
+        self.domain = FEDomain("domain", self.mesh) 
         self.omega = self.domain.create_region("Omega", "all")
 
         field = Field.from_args("fu", np.float64, "vector", self.omega, approx_order=1)
@@ -69,7 +71,7 @@ class FEAnalysis:
         self.integral_0 = Integral("i0", order=0)
         # self.1_integral = Integral('i', order=1)
         self.integral_2 = Integral("i2", order=2)
-
+# change
         self.material = self._create_material("m", youngs_modulus, poisson_ratio)
 
         self.force_region_name_list = []
@@ -150,6 +152,8 @@ class FEAnalysis:
         self.fixed_constraints = self._create_fixed_constraints(
             "Fixed", constraints_regions
         )
+        self.region_material_list= self.create_regions_materials(material_division,self.domain)
+        self.lhs_terms_list= self.create_lhs_terms(self.region_material_list,self.integral_2,self.test_field,self.unknown_field)
 
         self.lhs_term = Term.new(
             "dw_lin_elastic(m.D, v, u)",
@@ -221,6 +225,11 @@ class FEAnalysis:
             self.constraint_region_name_list.append(region_name)
         return regions
 
+    def _material_region_from_vertices(self,vertices: List, domain, name: str):
+        obj = Region(name, 'given vertices', domain, '')
+        obj.vertices = vertices
+        return obj
+
     @staticmethod
     def _create_material(
         name: str, youngs_modulus: int, poisson_ratio: int
@@ -231,6 +240,33 @@ class FEAnalysis:
                 dim=2, young=youngs_modulus, poisson=poisson_ratio
             ),
         )
+    
+    
+    def create_regions_materials(self,material_vertices_dict, domain):
+        region_material_list = []  # list of tuples of (region_obj, material_obj)
+        for key, vertices in material_vertices_dict.items():
+            y_modulus, p_ratio = key
+            current_region = self._material_region_from_vertices(vertices, domain, f"Region_{y_modulus}_{p_ratio}")  
+            current_material = self._create_material(f"Material_{y_modulus}_{p_ratio}", y_modulus, p_ratio)
+            region_material_list.append((current_region, current_material))
+
+        return region_material_list
+
+    def create_lhs_terms(self,region_material_list, integral_2, test_field, unknown_field):
+        lhs_terms_list = []
+        for region, material in region_material_list:
+            lhs_term = Term.new(
+                "dw_lin_elastic(m.D, v, u)",
+                integral_2,
+                region,
+                m=material,
+                v=test_field,
+                u=unknown_field,
+            )
+            lhs_terms_list.append(lhs_term)
+
+        return lhs_terms_list
+
 
     @staticmethod
     def _timestep_magnitude(ts, coords, mode, magnitude: Tuple[float, float], **kwargs):
@@ -269,10 +305,14 @@ class FEAnalysis:
 
     @staticmethod
     def _create_equations(
-        name: str, lhs_term: Term, rhs_terms: List[Term]
+        name: str, lhs_terms: List[Term], rhs_terms: List[Term]
     ) -> Equations:
+        
         rhs_terms = Terms(rhs_terms)
-        return Equations([Equation(name, lhs_term + rhs_terms)])
+        equations = Equations()
+        for i in range(len(lhs_terms)):
+            equations.append(Equation(name, lhs_terms[i]+ rhs_terms))
+        return equations
 
     @staticmethod
     def _create_fixed_constraints(name: str, regions: List[Region]) -> Conditions:
