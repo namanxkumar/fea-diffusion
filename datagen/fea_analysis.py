@@ -35,12 +35,12 @@ class FEAnalysis:
         filename: str,
         data_dir: str,
         condition_dir: str,
-        material_division: Dict[Tuple, List],
+        #material_division: Dict[Tuple, List],
         force_vertex_tags_magnitudes: List[Tuple[int, Tuple[float, float]]],
         force_edges_tags_magnitudes: List[Tuple[Tuple[int, int], Tuple[int, int]]],
         constraints_vertex_tags: List[int],
         constraints_edges_tags: List[Tuple[int, int]],
-        # regions list 
+         
         youngs_modulus: float = 210000,
         poisson_ratio: float = 0.3,
         num_steps: int = 11,
@@ -59,7 +59,7 @@ class FEAnalysis:
         )
 
         self.mesh = Mesh.from_file(path.join(data_dir, filename))
-        # might change
+        
         self.domain = FEDomain("domain", self.mesh) 
         self.omega = self.domain.create_region("Omega", "all")
 
@@ -71,7 +71,7 @@ class FEAnalysis:
         self.integral_0 = Integral("i0", order=0)
         # self.1_integral = Integral('i', order=1)
         self.integral_2 = Integral("i2", order=2)
-# change
+
         self.material = self._create_material("m", youngs_modulus, poisson_ratio)
 
         self.force_region_name_list = []
@@ -225,7 +225,7 @@ class FEAnalysis:
             self.constraint_region_name_list.append(region_name)
         return regions
 
-    def _material_region_from_vertices(self,vertices: List, domain, name: str):
+    def _material_region_from_vertices(self,vertices: List, domain, name: str) -> Region:
         obj = Region(name, 'given vertices', domain, '')
         obj.vertices = vertices
         return obj
@@ -242,7 +242,7 @@ class FEAnalysis:
         )
     
     
-    def create_regions_materials(self,material_vertices_dict, domain):
+    def _create_regions_materials(self,material_vertices_dict, domain) -> List[Region]:
         region_material_list = []  # list of tuples of (region_obj, material_obj)
         for key, vertices in material_vertices_dict.items():
             y_modulus, p_ratio = key
@@ -252,7 +252,7 @@ class FEAnalysis:
 
         return region_material_list
 
-    def create_lhs_terms(self,region_material_list, integral_2, test_field, unknown_field):
+    def _create_lhs_terms(self,region_material_list, integral_2, test_field, unknown_field) -> List[Term]:
         lhs_terms_list = []
         for region, material in region_material_list:
             lhs_term = Term.new(
