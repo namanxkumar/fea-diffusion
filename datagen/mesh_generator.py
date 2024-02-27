@@ -296,7 +296,7 @@ class MeshGenerator:
 
         return polygons_ptags, polygons_ltag_ptags
     
-    def _create_regions_with_kmeans(self,mesh_path) -> List[List]:
+    def _create_regions_with_kmeans(self,mesh_path:str) -> List[List]:
         mesh = pv.read(mesh_path)
         coords = np.array(mesh.points)
         num_clusters = random.randint(5, 20)  # Randomly select number of clusters
@@ -321,7 +321,7 @@ class MeshGenerator:
 
         return region_coordinates
 
-    def _create_regions_with_agglomerative_clustering(self,mesh_path, link) -> List[List]:
+    def _create_regions_with_agglomerative_clustering(self,mesh_path:str, link) -> List[List]:
         mesh = pv.read(mesh_path)
         coords = np.array(mesh.points)
 
@@ -337,13 +337,13 @@ class MeshGenerator:
 
         return region_coordinates
 
-    def _create_regions_randomly(self,mesh_path) -> List[List]:
+    def _create_regions_randomly(self,mesh_path:str) -> List[List]:
         method = random.choice(["kmeans", "agglomerative"])
         if method == "kmeans":
-            return self.create_regions_with_kmeans(mesh_path)
+            return self._create_regions_with_kmeans(mesh_path)
         else:
             link = random.choice(["complete", "average", "ward"])
-            return self.create_regions_with_agglomerative_clustering(mesh_path, link)
+            return self._create_regions_with_agglomerative_clustering(mesh_path, link)
 
 
     def _assign_materials_to_regions(regions: List[List]) -> Dict[Tuple, List]:
