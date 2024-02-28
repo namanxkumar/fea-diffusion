@@ -6,8 +6,16 @@ from typing import Dict, List, Optional, Tuple
 import numpy as np
 from PIL import Image
 from sfepy.base.base import IndexedStruct, Struct, output
-from sfepy.discrete import (Equation, Equations, FieldVariable, Function,
-                            Integral, Material, Problem, Variables)
+from sfepy.discrete import (
+    Equation,
+    Equations,
+    FieldVariable,
+    Function,
+    Integral,
+    Material,
+    Problem,
+    Variables,
+)
 from sfepy.discrete.common.region import Region
 from sfepy.discrete.conditions import Conditions, EssentialBC
 from sfepy.discrete.fem import FEDomain, Field, Mesh
@@ -53,7 +61,7 @@ class FEAnalysis:
         self.mesh = Mesh.from_file(path.join(data_dir, filename))
 
         self.domain = FEDomain("domain", self.mesh)
-        self.omega = self.domain.create_region("Omega", "all")
+        self.omega: Region = self.domain.create_region("Omega", "all")
 
         field = Field.from_args("fu", np.float64, "vector", self.omega, approx_order=1)
 
@@ -228,7 +236,7 @@ class FEAnalysis:
         return self.domain.create_region(
             name,
             "vertices by get_vertices",
-            "vertex",
+            "cell",
             functions={
                 "get_vertices": Function(
                     "get_vertices",
@@ -259,10 +267,11 @@ class FEAnalysis:
             Tuple[float, float], List[Tuple[float, float]]
         ],
     ) -> List[Tuple[Region, Material]]:
-        regions_materials_list = []
-        for index, (youngs_modulus, poissons_ratio), vertices in enumerate(
+        regions_materials_list: List[Tuple[Region, Material]] = []
+        for index, ((youngs_modulus, poissons_ratio), vertices) in enumerate(
             material_properties_to_vertices.items()
         ):
+            print(len(vertices))
             self._append_region_value_to_file(
                 "materials.txt",
                 f"MaterialRegion{index}",
@@ -271,15 +280,17 @@ class FEAnalysis:
             regions_materials_list.append(
                 (
                     self._create_region_from_vertex_coordinates(
-                        vertices, f"MaterialRegion{index}"
+                        f"MaterialRegion{index}",
+                        vertices,
                     ),
                     self._create_material(
-                        f"Material{index}",
+                        "m",
                         youngs_modulus,
                         poissons_ratio,
                     ),
                 )
             )
+        return regions_materials_list
 
     def _create_lhs_terms(
         self, region_material_list: List[Tuple[Region, Material]]
@@ -335,12 +346,10 @@ class FEAnalysis:
     def _create_equations(
         name: str, lhs_terms: List[Term], rhs_terms_per_lhs_term: List[Term]
     ) -> Equations:
-        equations = Equations()
-        for i in range(len(lhs_terms)):
-            equations.append(
-                Equation(name, lhs_terms[i] + Terms(rhs_terms_per_lhs_term))
-            )
-        return equations
+        # lhs_terms = Terms(lhs_terms)
+        rhs_terms = Terms(rhs_terms_per_lhs_term)
+        return Equations([Equation(name + str(index), lhs_term + rhs_terms) for index, lhs_term in enumerate(lhs_terms)])
+        # return Equations([Equation(name, lhs_terms + rhs_terms)])
 
     @staticmethod
     def _create_fixed_constraints(name: str, regions: List[Region]) -> Conditions:
