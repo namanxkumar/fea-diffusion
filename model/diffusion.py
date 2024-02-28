@@ -26,7 +26,7 @@ from PIL import Image
 
 import logging
 from datetime import datetime
-
+import timeit
 from typing import Optional, Dict, Tuple, List, Union
 
 # In regular diffusion implementations, a groundtruth image is provided from the dataset, a random timestep is generated for each forward pass,
@@ -328,9 +328,9 @@ class Trainer:
         )
         self.num_samples = len(self.sample_dataset)
 
-        assert (
-            len(self.dataset) >= 100
-        ), "you should have at least 100 samples in your folder. at least 10k images recommended"
+        # assert (
+        #     len(self.dataset) >= 100
+        # ), "you should have at least 100 samples in your folder. at least 10k images recommended"
 
         self.train_dataloader = DataLoader(
             self.dataset,
@@ -575,13 +575,16 @@ class Trainer:
         num_batches = 0
         if progress_bar:
             self.sample_dataloader = tqdm(self.sample_dataloader, desc="Sampling")
+        
+        start = timeit.default_timer()
         for batch in self.sample_dataloader:
             images, loss = self.sample(batch, use_ema_model)
             sampled_images += images
             total_sample_loss += loss
             num_batches += 1
         total_sample_loss /= num_batches
-
+        stop = timeit.default_timer()
+        print('Time: ', stop - start)   
         if save:
             num_conditions = self.sample_dataset.conditions_per_plate_geometry
             num_steps = self.sample_dataset.num_steps

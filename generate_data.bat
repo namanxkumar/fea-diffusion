@@ -1,0 +1,1 @@
+python calculate_accuracy_qualitative.py --ground_truth_data_dir data/qualitativesample --generated_samples_dir results/256/256ckpt183 --num_plates 200 --num_conditions_per_plate 1 --num_steps_per_condition 2 --image_size 256
