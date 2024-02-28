@@ -29,7 +29,7 @@ MATERIALS = [
     {"name": "Wood", "youngs_modulus": 11000, "poissons_ratio": 0.35},
     {"name": "Glass", "youngs_modulus": 64000, "poissons_ratio": 0.22},
     {"name": "Plastic", "youngs_modulus": 3000, "poissons_ratio": 0.4},
-    {"name": "Rubber", "youngs_modulus": 0.01, "poissons_ratio": 0.5},
+    {"name": "Rubber", "youngs_modulus": 0.01, "poissons_ratio": 0.499},
     {"name": "Bronze", "youngs_modulus": 120000, "poissons_ratio": 0.34},
     {"name": "Tungsten", "youngs_modulus": 411000, "poissons_ratio": 0.28},
     {"name": "Silver", "youngs_modulus": 83000, "poissons_ratio": 0.37},
