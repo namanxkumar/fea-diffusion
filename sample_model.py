@@ -4,7 +4,7 @@ from model.fdnunet import FDNUNet
 
 import argparse
 
-parser = argparse.ArgumentParser(description="Train model.")
+parser = argparse.ArgumentParser(description="Sample model.")
 
 parser.add_argument(
     "--data_dir", type=str, default="data/feadata2500", help="Data directory."
