@@ -20,6 +20,7 @@ def generate_data(
     points_per_polygon_range: Tuple[int, int] = (3, 8),
     holes_per_polygon_range: Tuple[int, int] = (0, 3),
     points_per_hole_range: Tuple[int, int] = (3, 4),
+    num_regions: Tuple[int, int] = (1, 5),
     save_displacement: bool = True,
     save_strain: bool = False,
     save_stress: bool = False,
@@ -35,6 +36,7 @@ def generate_data(
         points_per_polygon_range=points_per_polygon_range,
         holes_per_polygon_range=holes_per_polygon_range,
         points_per_hole_range=points_per_hole_range,
+        num_regions=num_regions,
     )
 
     assert num_plates >= 1
