@@ -319,7 +319,7 @@ class MeshGenerator:
             new_labels[points_in_cluster] = cluster2_labels_centres[i]
 
         # Initialize list to store coordinates for each region
-        region_coordinates = [[]] * num_regions
+        region_coordinates = [[] for _ in range(num_regions)]
 
         for i in range(num_clusters):
             points_in_cluster = cluster_labels == i
@@ -346,9 +346,7 @@ class MeshGenerator:
         region_assignments = agg_clustering.fit_predict(coords)
 
         # Initialize list to store coordinates for each region
-        region_coordinates = [
-            [],
-        ] * num_regions
+        region_coordinates = [[] for _ in range(num_regions)]
 
         for i in range(num_regions):
             points_in_region = region_assignments == i
@@ -360,8 +358,7 @@ class MeshGenerator:
         return region_coordinates
 
     def _create_regions_randomly(self) -> List[List]:
-        # method = random.choice(["kmeans", "agglomerative"])
-        method = "kmeans"
+        method = random.choice(["kmeans", "agglomerative"])
         if method == "kmeans":
             return self._create_regions_with_kmeans()
         else:
@@ -382,7 +379,6 @@ class MeshGenerator:
                 material["poissons_ratio"],
             )
             materials_dict[material_properties] = regions[i]
-
         return materials_dict
 
     def sample_conditions(
