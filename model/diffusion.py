@@ -52,7 +52,7 @@ class FEADataset(Dataset):
         augmentation: bool = False,
         conditions_per_plate: int = 4,
         num_steps: int = 11,
-        min_max_magnitude: Tuple[int, int] = (0, 5000),
+        min_max_magnitude: Tuple[int, int] = (500, 5000),
     ):
         super().__init__()
         self.path = Path(f"{folder}")

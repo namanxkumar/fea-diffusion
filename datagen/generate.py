@@ -1,27 +1,30 @@
-from .mesh_generator import MeshGenerator
-from .fea_analysis import FEAnalysis
-from .utils import verify_directory, find_image_bounds
-from typing import Dict
 import os
+from timeit import default_timer as timer
+from typing import Dict, Optional, Tuple
+
 from tqdm.autonotebook import tqdm
+
+from .fea_analysis import FEAnalysis
+from .mesh_generator import MeshGenerator
+from .utils import find_image_bounds, verify_directory
 
 
 def generate_data(
-    data_dir="data/",
-    image_size=512,
-    num_plates=1,
-    start_plate=None,
-    conditions_per_plate=4,
-    mesh_size=1e-2,
-    num_polygons_range=(1, 3),
-    points_per_polygon_range=(3, 8),
-    holes_per_polygon_range=(0, 3),
-    points_per_hole_range=(3, 4),
-    save_displacement=True,
-    save_strain=False,
-    save_stress=False,
+    data_dir: str = "data/",
+    image_size: int = 512,
+    num_plates: int = 1,
+    start_plate: Optional[int] = None,
+    conditions_per_plate: int = 4,
+    mesh_size: float = 1e-2,
+    num_polygons_range: Tuple[int, int] = (1, 3),
+    points_per_polygon_range: Tuple[int, int] = (3, 8),
+    holes_per_polygon_range: Tuple[int, int] = (0, 3),
+    points_per_hole_range: Tuple[int, int] = (3, 4),
+    save_displacement: bool = True,
+    save_strain: bool = False,
+    save_stress: bool = False,
     num_steps_per_condition: int = 11,
-    save_meshes=False,
+    save_meshes: bool = False,
 ):
     assert num_steps_per_condition > 1, "Must have at least 2 steps per condition."
 
@@ -45,6 +48,7 @@ def generate_data(
 
     plate_progress_bar = tqdm(total=num_plates, colour="green")
     plate_progress_bar.update(plate_index)
+    total_time = 0
     while plate_index < num_plates:
         try:
             geometry = generator.generate_geometry()
@@ -77,20 +81,31 @@ def generate_data(
             verify_directory(condition_dir)
 
             analyzer = FEAnalysis(
-                "part.mesh",
-                data_dir,
-                condition_dir,
-                conditions[condition_index]["point_forces"],
-                conditions[condition_index]["edge_forces"],
-                conditions[condition_index]["point_constraints"],
-                conditions[condition_index]["edge_constraints"],
-                youngs_modulus=210000,
-                poisson_ratio=0.3,
+                filename="part.mesh",
+                data_dir=data_dir,
+                condition_dir=condition_dir,
+                force_vertex_tags_magnitudes=conditions[condition_index][
+                    "point_forces"
+                ],
+                force_edges_tags_magnitudes=conditions[condition_index]["edge_forces"],
+                constraints_vertex_tags=conditions[condition_index][
+                    "point_constraints"
+                ],
+                constraints_edges_tags=conditions[condition_index]["edge_constraints"],
+                material_properties_to_vertices=conditions[condition_index][
+                    "material_regions"
+                ],
+                # youngs_modulus = 210000,
+                # poisson_ratio = 0.3,
                 num_steps=num_steps_per_condition,
                 save_meshes=save_meshes,
             )
 
+            start = timer()
             analyzer.calculate()
+            end = timer()
+            print("TIME:", end - start)
+            total_time += end - start
 
             if condition_index == 0:
                 outline_dir = os.path.join(plate_dir, "outline.png")
@@ -124,7 +139,9 @@ def generate_data(
 
         plate_index += 1
         plate_progress_bar.update(1)
+        print("PLATE TIME:", total_time)
     plate_progress_bar.close()
+    print("TOTAL TIME:", total_time)
 
 
 if __name__ == "__main__":

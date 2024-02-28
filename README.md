@@ -23,7 +23,7 @@ sudo apt-get install libglu1 libxcursor-dev libxft2 libxinerama1 libfltk1.3-dev 
 ```
 - Install torch and other dependencies via pip
 ```sh
-pip install torch torchvision einops tqdm accelerate ema_pytorch jaxlib
+pip install torch torchvision einops tqdm accelerate ema_pytorch jaxlib scikit-learn
 ```
 - [Optional] To use wandb logging, install and login to wandb via
 ```sh

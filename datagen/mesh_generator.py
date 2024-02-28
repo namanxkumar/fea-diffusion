@@ -1,19 +1,18 @@
-import shapely.geometry
-from shapely.plotting import plot_polygon
-import shapely.affinity
-from shapely.ops import unary_union
 import random
-import matplotlib.pyplot as plt
-import gmsh
 import sys
 from collections import OrderedDict
-from typing import List, Tuple, OrderedDict, Dict
 from copy import deepcopy
+from typing import Dict, List, OrderedDict, Tuple
+
+import gmsh
+import matplotlib.pyplot as plt
 import numpy as np
 import pyvista as pv
-from sklearn.cluster import KMeans, AgglomerativeClustering
-
-from typing import List, Dict, Tuple
+import shapely.affinity
+import shapely.geometry
+from shapely.ops import unary_union
+from shapely.plotting import plot_polygon
+from sklearn.cluster import AgglomerativeClustering, KMeans
 
 MATERIALS = [
     {"name": "Steel", "youngs_modulus": 210000, "poissons_ratio": 0.3},
@@ -35,7 +34,7 @@ MATERIALS = [
     {"name": "Tungsten", "youngs_modulus": 411000, "poissons_ratio": 0.28},
     {"name": "Silver", "youngs_modulus": 83000, "poissons_ratio": 0.37},
     {"name": "Gold", "youngs_modulus": 78000, "poissons_ratio": 0.44},
-    {"name": "Platinum", "youngs_modulus": 168000, "poissons_ratio": 0.38}
+    {"name": "Platinum", "youngs_modulus": 168000, "poissons_ratio": 0.38},
 ]
 
 
@@ -47,13 +46,13 @@ class MeshGenerator:
         holes_per_polygon_range=(0, 3),
         points_per_hole_range=(3, 4),
         random_seed=None,
-        num_regions=(2,5)
+        num_regions=(2, 5),
     ):
         self.num_polygons_range = num_polygons_range
         self.points_per_polygon_range = points_per_polygon_range
         self.holes_per_polygon_range = holes_per_polygon_range
         self.points_per_hole_range = points_per_hole_range
-        self.num_regions= num_regions
+        self.num_regions = num_regions
         self.random = random.Random(random_seed)
 
     @staticmethod
@@ -92,7 +91,7 @@ class MeshGenerator:
                 bounds[0] + self._random_float() * (bounds[2] - bounds[0]),
                 bounds[1] + self._random_float() * (bounds[3] - bounds[1]),
             )
-            for i in range(num_coordinates)
+            for _ in range(num_coordinates)
         ]
 
     # def random_coordinates_in_polygon(self, polygon : shapely.geometry.Polygon, num_coordinates):
@@ -295,8 +294,8 @@ class MeshGenerator:
         gmsh.finalize()
 
         return polygons_ptags, polygons_ltag_ptags
-    
-    def _create_regions_with_kmeans(self,mesh_path:str) -> List[List]:
+
+    def _create_regions_with_kmeans(self, mesh_path: str) -> List[List]:
         mesh = pv.read(mesh_path)
         coords = np.array(mesh.points)
         num_clusters = random.randint(5, 20)  # Randomly select number of clusters
@@ -305,23 +304,31 @@ class MeshGenerator:
         cluster_labels = clustering.fit_predict(coords)
 
         clustering2_centres = KMeans(n_clusters=5)
-        cluster2_labels_centres = clustering2_centres.fit_predict(clustering.cluster_centers_.reshape(-1, 1))
+        cluster2_labels_centres = clustering2_centres.fit_predict(
+            clustering.cluster_centers_.reshape(-1, 1)
+        )
 
         new_labels = np.empty_like(cluster_labels)
         for i in range(num_clusters):
             points_in_cluster = cluster_labels == i
             new_labels[points_in_cluster] = cluster2_labels_centres[i]
 
-        region_coordinates = [[] for _ in range(5)]  # Initialize list to store coordinates for each region
+        region_coordinates = [
+            [] for _ in range(5)
+        ]  # Initialize list to store coordinates for each region
 
         for i in range(num_clusters):
             points_in_cluster = cluster_labels == i
-            region_idx = int(new_labels[points_in_cluster][0])  # Get the region index for the cluster
+            region_idx = int(
+                new_labels[points_in_cluster][0]
+            )  # Get the region index for the cluster
             region_coordinates[region_idx].extend(coords[points_in_cluster])
 
         return region_coordinates
 
-    def _create_regions_with_agglomerative_clustering(self,mesh_path:str, link) -> List[List]:
+    def _create_regions_with_agglomerative_clustering(
+        self, mesh_path: str, link
+    ) -> List[List]:
         mesh = pv.read(mesh_path)
         coords = np.array(mesh.points)
 
@@ -329,7 +336,9 @@ class MeshGenerator:
         agg_clustering = AgglomerativeClustering(n_clusters=num_regions, linkage=link)
         region_assignments = agg_clustering.fit_predict(coords)
 
-        region_coordinates = [[] for _ in range(num_regions)]  # Initialize list to store coordinates for each region
+        region_coordinates = [
+            [] for _ in range(num_regions)
+        ]  # Initialize list to store coordinates for each region
 
         for i in range(num_regions):
             points_in_region = region_assignments == i
@@ -337,7 +346,7 @@ class MeshGenerator:
 
         return region_coordinates
 
-    def _create_regions_randomly(self,mesh_path:str) -> List[List]:
+    def _create_regions_randomly(self, mesh_path: str) -> List[List]:
         method = random.choice(["kmeans", "agglomerative"])
         if method == "kmeans":
             return self._create_regions_with_kmeans(mesh_path)
@@ -345,26 +354,27 @@ class MeshGenerator:
             link = random.choice(["complete", "average", "ward"])
             return self._create_regions_with_agglomerative_clustering(mesh_path, link)
 
-
-    def _assign_materials_to_regions(regions: List[List]) -> Dict[Tuple, List]:
+    def _assign_materials_to_regions(
+        regions: List[List],
+    ) -> Dict[Tuple[float, float], List[Tuple[float, float]]]:
         materials_dict = {}
-        num_regions = len(regions)
-        
-        # Randomly select material properties for each region
-        for i in range(num_regions):
-            material = random.choice(materials)
-            material_properties = (material["youngs_modulus"], material["poissons_ratio"])
-            materials_dict[material_properties] = regions[i]
-        
-        return materials_dict
 
+        # Randomly select material properties for each region
+        for i in range(len(regions)):
+            material = random.choice(MATERIALS)
+            material_properties = (
+                material["youngs_modulus"],
+                material["poissons_ratio"],
+            )
+            materials_dict[material_properties] = regions[i]
+
+        return materials_dict
 
     def sample_conditions(
         self,
         mesh_path,
         polygons_ptags: List[List[int]],
         polygons_ltag_ptags: List[OrderedDict[int, Tuple[int, int]]],
-
         num_conditions: int = 4,
     ) -> List[Dict]:
         conditions = []
@@ -430,13 +440,12 @@ class MeshGenerator:
                     0 if len(point_forces) >= 1 else 1, len(i_combined_edges_ptags)
                 ),
             )
-            region_coordinates = self.create_regions_randomly(mesh_path)
-            materials_assigned = self.assign_materials_to_regions(region_coordinates)
 
-
+            region_coordinates = self._create_regions_randomly(mesh_path)
+            materials_assigned = self._assign_materials_to_regions(region_coordinates)
 
             condition = {
-                "material_division": dict(materials_assigned),
+                "material_regions": dict(materials_assigned),
                 "point_constraints": list(vertices_to_constrain),
                 "edge_constraints": list(edges_to_constrain),
                 "point_forces": list(point_forces),

@@ -1,32 +1,23 @@
-from sfepy.discrete.fem import Mesh, FEDomain, Field
-from sfepy.discrete import (
-    FieldVariable,
-    Material,
-    Integral,
-    Function,
-    Equation,
-    Equations,
-    Problem,
-    Variables,
-)
+import math
+import os
+from os import path
+from typing import Dict, List, Optional, Tuple
+
+import numpy as np
+from PIL import Image
+from sfepy.base.base import IndexedStruct, Struct, output
+from sfepy.discrete import (Equation, Equations, FieldVariable, Function,
+                            Integral, Material, Problem, Variables)
 from sfepy.discrete.common.region import Region
-from sfepy.mechanics.matcoefs import stiffness_from_youngpoisson
-from sfepy.terms import Term, Terms
 from sfepy.discrete.conditions import Conditions, EssentialBC
-from sfepy.base.base import IndexedStruct
+from sfepy.discrete.fem import FEDomain, Field, Mesh
+from sfepy.mechanics.matcoefs import stiffness_from_youngpoisson
 from sfepy.solvers.ls import ScipyDirect
 from sfepy.solvers.nls import Newton
 from sfepy.solvers.ts_solvers import SimpleTimeSteppingSolver
-from sfepy.base.base import Struct, output
+from sfepy.terms import Term, Terms
 
 from .custom_plotter import plot
-
-import numpy as np
-from typing import Tuple, List, Dict
-import os
-from os import path
-import math
-from PIL import Image
 
 
 class FEAnalysis:
@@ -35,16 +26,17 @@ class FEAnalysis:
         filename: str,
         data_dir: str,
         condition_dir: str,
-        #material_division: Dict[Tuple, List],
         force_vertex_tags_magnitudes: List[Tuple[int, Tuple[float, float]]],
         force_edges_tags_magnitudes: List[Tuple[Tuple[int, int], Tuple[int, int]]],
         constraints_vertex_tags: List[int],
         constraints_edges_tags: List[Tuple[int, int]],
-         
-        youngs_modulus: float = 210000,
-        poisson_ratio: float = 0.3,
         num_steps: int = 11,
-        save_meshes=False,
+        save_meshes: bool = False,
+        material_properties_to_vertices: Optional[
+            Dict[Tuple[float, float], List[Tuple[float, float]]]
+        ] = None,
+        youngs_modulus: Optional[float] = 210000,
+        poisson_ratio: Optional[float] = 0.3,
     ):
         self.data_dir = data_dir
         self.region_filename = "regions"
@@ -59,8 +51,8 @@ class FEAnalysis:
         )
 
         self.mesh = Mesh.from_file(path.join(data_dir, filename))
-        
-        self.domain = FEDomain("domain", self.mesh) 
+
+        self.domain = FEDomain("domain", self.mesh)
         self.omega = self.domain.create_region("Omega", "all")
 
         field = Field.from_args("fu", np.float64, "vector", self.omega, approx_order=1)
@@ -72,63 +64,47 @@ class FEAnalysis:
         # self.1_integral = Integral('i', order=1)
         self.integral_2 = Integral("i2", order=2)
 
-        self.material = self._create_material("m", youngs_modulus, poisson_ratio)
-
-        self.force_region_name_list = []
-        self.constraint_region_name_list = []
-
         # Create force terms
         force_vertex_region_magnitudes = []
         for index in range(len(force_vertex_tags_magnitudes)):
-            region_name = "VertexForce{}".format(index)
+            region_name = f"VertexForce{index}"
             region = self._create_region_from_vertex(
                 region_name, force_vertex_tags_magnitudes[index][0]
             )
-            self.force_region_name_list.append(region_name)
             magnitude = self._create_magnitude(
-                "VertexMagnitude{}".format(index),
+                f"VertexMagnitude{index}",
                 force_vertex_tags_magnitudes[index][1],
             )
             force_vertex_region_magnitudes.append((region, magnitude))
-            with open(
-                path.join(condition_dir, "magnitudes.txt".format(index)), "a+"
-            ) as f:
-                f.write(
-                    "{}:{}\n".format(
-                        region_name, str(force_vertex_tags_magnitudes[index][1])
-                    )
-                )
+            self._append_region_value_to_file(
+                "magnitudes.txt",
+                region_name,
+                force_vertex_tags_magnitudes[index][1],
+            )
 
         force_edges_region_magnitudes = []
         for index in range(len(force_edges_tags_magnitudes)):
-            region_name = "EdgeForce{}".format(index)
+            region_name = f"EdgeForce{index}"
             region = self._create_region_from_edge(
                 region_name, force_edges_tags_magnitudes[index][0]
             )
-            self.force_region_name_list.append(region_name)
             num_vertices = max(len(region.get_entities(0)), 1)
             magnitude = self._create_magnitude(
-                "EdgeMagnitude{}".format(index),
+                f"EdgeMagnitude{index}",
                 tuple(
                     component / num_vertices
                     for component in force_edges_tags_magnitudes[index][1]
                 ),
             )
             force_edges_region_magnitudes.append((region, magnitude))
-            with open(
-                path.join(condition_dir, "magnitudes.txt".format(index)), "a+"
-            ) as f:
-                f.write(
-                    "{}:{}\n".format(
-                        region_name,
-                        str(
-                            tuple(
-                                component / num_vertices
-                                for component in force_edges_tags_magnitudes[index][1]
-                            )
-                        ),
-                    )
-                )
+            self._append_region_value_to_file(
+                "magnitudes.txt",
+                region_name,
+                tuple(
+                    component / num_vertices
+                    for component in force_edges_tags_magnitudes[index][1]
+                ),
+            )
 
         force_regions_magnitudes = (
             force_vertex_region_magnitudes + force_edges_region_magnitudes
@@ -152,20 +128,38 @@ class FEAnalysis:
         self.fixed_constraints = self._create_fixed_constraints(
             "Fixed", constraints_regions
         )
-        self.region_material_list= self.create_regions_materials(material_division,self.domain)
-        self.lhs_terms_list= self.create_lhs_terms(self.region_material_list,self.integral_2,self.test_field,self.unknown_field)
 
-        self.lhs_term = Term.new(
-            "dw_lin_elastic(m.D, v, u)",
-            self.integral_2,
-            self.omega,
-            m=self.material,
-            v=self.test_field,
-            u=self.unknown_field,
-        )
+        if material_properties_to_vertices is not None:
+            region_material_list = self._create_regions_materials_list(
+                material_properties_to_vertices
+            )
+            self.lhs_terms = self._create_lhs_terms(
+                region_material_list,
+            )
+        else:
+            assert (
+                youngs_modulus is not None and poisson_ratio is not None
+            ), "If material_properties_to_vertices is not provided, youngs_modulus and poisson_ratio must be provided"
+            material = self._create_material("m", youngs_modulus, poisson_ratio)
+            self.lhs_terms: List[Term] = [
+                Term.new(
+                    "dw_lin_elastic(m.D, v, u)",
+                    self.integral_2,
+                    self.omega,
+                    m=material,
+                    v=self.test_field,
+                    u=self.unknown_field,
+                )
+            ]
 
         self.nls_solver = self._create_nls_solver()
         self.num_steps = num_steps
+
+    def _append_region_value_to_file(
+        self, filename: str, region_name: str, value: Tuple[float, float]
+    ):
+        with open(path.join(self.condition_dir, filename), "a+") as f:
+            f.write("{}:{}\n".format(region_name, str(value)))
 
     @staticmethod
     def crop_image(image_path, bounds):
@@ -174,12 +168,18 @@ class FEAnalysis:
         image.save(image_path)
 
     @staticmethod
-    def _get_points_on_edge(coords, bounding_tags, **kwargs):
+    def _get_points_on_edge(coords, bounding_tags, **_):
         coord0 = coords[bounding_tags[0] - 1]
         coord1 = coords[bounding_tags[1] - 1]
         x1, y1 = coord1[0] - coord0[0], coord1[1] - coord0[1]
         x2, y2 = coords[:, 0] - coord0[0], coords[:, 1] - coord0[1]
         return np.where(np.abs(x1 * y2 - x2 * y1) < 1e-14)[0]
+
+    @staticmethod
+    def _get_points_in_list(
+        coords: np.ndarray, region_coordinates: List[Tuple[float, float]], **_
+    ):
+        return np.where(np.isin(coords, region_coordinates).all(axis=1))[0]
 
     def _create_region_from_vertex(self, name: str, vertex_tag: int) -> Region:
         return self.domain.create_region(
@@ -204,14 +204,10 @@ class FEAnalysis:
     def _create_regions_from_vertices(
         self, name: str, vertices_tag: List[int]
     ) -> List[Region]:
-        regions = []
-        for index in range(len(vertices_tag)):
-            region_name = name + str(index)
-            regions.append(
-                self._create_region_from_vertex(region_name, vertices_tag[index])
-            )
-            self.constraint_region_name_list.append(region_name)
-        return regions
+        return [
+            self._create_region_from_vertex(name + str(index), vertex_tag)
+            for index, vertex_tag in enumerate(vertices_tag)
+        ]
 
     def _create_regions_from_edges(
         self, name: str, edges_tags: List[Tuple[int, int]]
@@ -222,13 +218,29 @@ class FEAnalysis:
             regions.append(
                 self._create_region_from_edge(region_name, edges_tags[index])
             )
-            self.constraint_region_name_list.append(region_name)
         return regions
 
-    def _material_region_from_vertices(self,vertices: List, domain, name: str) -> Region:
-        obj = Region(name, 'given vertices', domain, '')
-        obj.vertices = vertices
-        return obj
+    def _create_region_from_vertex_coordinates(
+        self,
+        name: str,
+        vertex_coordinates: List[Tuple[float, float]],
+    ) -> Region:
+        return self.domain.create_region(
+            name,
+            "vertices by get_vertices",
+            "vertex",
+            functions={
+                "get_vertices": Function(
+                    "get_vertices",
+                    self._get_points_in_list,
+                    extra_args={"region_coordinates": vertex_coordinates},
+                )
+            },
+            allow_empty=True,
+        )
+        # obj = Region(name, "given vertices", self.domain, "")
+        # obj.vertices = vertices
+        # return obj
 
     @staticmethod
     def _create_material(
@@ -240,36 +252,52 @@ class FEAnalysis:
                 dim=2, young=youngs_modulus, poisson=poisson_ratio
             ),
         )
-    
-    
-    def _create_regions_materials(self,material_vertices_dict, domain) -> List[Region]:
-        region_material_list = []  # list of tuples of (region_obj, material_obj)
-        for key, vertices in material_vertices_dict.items():
-            y_modulus, p_ratio = key
-            current_region = self._material_region_from_vertices(vertices, domain, f"Region_{y_modulus}_{p_ratio}")  
-            current_material = self._create_material(f"Material_{y_modulus}_{p_ratio}", y_modulus, p_ratio)
-            region_material_list.append((current_region, current_material))
 
-        return region_material_list
+    def _create_regions_materials_list(
+        self,
+        material_properties_to_vertices: Dict[
+            Tuple[float, float], List[Tuple[float, float]]
+        ],
+    ) -> List[Tuple[Region, Material]]:
+        regions_materials_list = []
+        for index, (youngs_modulus, poissons_ratio), vertices in enumerate(
+            material_properties_to_vertices.items()
+        ):
+            self._append_region_value_to_file(
+                "materials.txt",
+                f"MaterialRegion{index}",
+                (youngs_modulus, poissons_ratio),
+            )
+            regions_materials_list.append(
+                (
+                    self._create_region_from_vertex_coordinates(
+                        vertices, f"MaterialRegion{index}"
+                    ),
+                    self._create_material(
+                        f"Material{index}",
+                        youngs_modulus,
+                        poissons_ratio,
+                    ),
+                )
+            )
 
-    def _create_lhs_terms(self,region_material_list, integral_2, test_field, unknown_field) -> List[Term]:
-        lhs_terms_list = []
-        for region, material in region_material_list:
-            lhs_term = Term.new(
+    def _create_lhs_terms(
+        self, region_material_list: List[Tuple[Region, Material]]
+    ) -> List[Term]:
+        return [
+            Term.new(
                 "dw_lin_elastic(m.D, v, u)",
-                integral_2,
+                self.integral_2,
                 region,
                 m=material,
-                v=test_field,
-                u=unknown_field,
+                v=self.test_field,
+                u=self.unknown_field,
             )
-            lhs_terms_list.append(lhs_term)
-
-        return lhs_terms_list
-
+            for region, material in region_material_list
+        ]
 
     @staticmethod
-    def _timestep_magnitude(ts, coords, mode, magnitude: Tuple[float, float], **kwargs):
+    def _timestep_magnitude(ts, coords, mode, magnitude: Tuple[float, float], **_):
         if mode == "special":
             force = (ts.time * -1 * magnitude[0], ts.time * -1 * magnitude[1])
             # val = np.array([
@@ -305,13 +333,13 @@ class FEAnalysis:
 
     @staticmethod
     def _create_equations(
-        name: str, lhs_terms: List[Term], rhs_terms: List[Term]
+        name: str, lhs_terms: List[Term], rhs_terms_per_lhs_term: List[Term]
     ) -> Equations:
-        
-        rhs_terms = Terms(rhs_terms)
         equations = Equations()
         for i in range(len(lhs_terms)):
-            equations.append(Equation(name, lhs_terms[i]+ rhs_terms))
+            equations.append(
+                Equation(name, lhs_terms[i] + Terms(rhs_terms_per_lhs_term))
+            )
         return equations
 
     @staticmethod
@@ -328,7 +356,7 @@ class FEAnalysis:
         ls = ScipyDirect({})
         nls_status = IndexedStruct()
         return Newton({}, lin_solver=ls, status=nls_status)
- 
+
     def _save_regions(self, problem: Problem) -> None:
         directory = self.condition_dir if self.save_meshes else self.data_dir
         if path.isfile(path.join(directory, self.region_filename + ".vtk")):
@@ -371,7 +399,7 @@ class FEAnalysis:
         return output
 
     def calculate(self):
-        equations = self._create_equations("Balance", self.lhs_term, self.force_terms)
+        equations = self._create_equations("Balance", self.lhs_terms, self.force_terms)
 
         problem = Problem("Elasticity", equations=equations)
         problem.set_bcs(ebcs=self.fixed_constraints)
@@ -450,17 +478,16 @@ class FEAnalysis:
             self.crop_image(filepath, self.bounds)
 
     def save_region_images(self, filepathroot, crop=True):
-        for config in self.force_region_name_list + self.constraint_region_name_list:
-            filepath = "{}_{}.png".format(filepathroot, config)
+        for region_name in self.domain.regions.get_names():
+            filepath = "{}_{}.png".format(filepathroot, region_name)
 
-            # system("sfepy-view {}.vtk -f {}:vs {} -o {}".format(path.join(self.data_dir, self.region_filename), config, self.common_config, filepath))
-            if self.save_meshes:
-                directory = self.condition_dir
-            else:
-                directory = self.data_dir
+            # system("sfepy-view {}.vtk -f {}:vs {} -o {}".format(path.join(self.data_dir, self.region_filename), region_name, self.common_config, filepath))
+
+            directory = self.condition_dir if self.save_meshes else self.data_dir
+
             plot(
                 filenames=["{}.vtk".format(path.join(directory, self.region_filename))],
-                fields=[(config, "vs")],
+                fields=[(region_name, "vs")],
                 window_size=(self.image_size, self.image_size),
                 screenshot=filepath,
             )
