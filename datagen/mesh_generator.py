@@ -452,6 +452,13 @@ class MeshGenerator:
             )
 
             region_coordinates = self._create_regions_randomly()
+            mesh = pv.read(self.mesh_path)
+            coords = np.array(mesh.points)
+            total_region_coordinates = sum(len(region) for region in region_coordinates)
+            if len(coords) != total_region_coordinates:
+                continue
+                    
+
             materials_assigned = self._assign_materials_to_regions(region_coordinates)
 
             condition = {
