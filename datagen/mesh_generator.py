@@ -359,6 +359,7 @@ class MeshGenerator:
 
     def _create_regions_randomly(self) -> List[List]:
         method = random.choice(["kmeans", "agglomerative"])
+        print(method)
         if method == "kmeans":
             return self._create_regions_with_kmeans()
         else:
@@ -460,6 +461,9 @@ class MeshGenerator:
                     
 
             materials_assigned = self._assign_materials_to_regions(region_coordinates)
+            total_final_coordinates= sum(len(region) for region in materials_assigned.values())
+            if len(coords) !=total_final_coordinates:
+                continue
 
             condition = {
                 "material_regions": dict(materials_assigned),
