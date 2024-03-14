@@ -206,7 +206,7 @@ class FEAnalysis:
                     extra_args={"bounding_tags": edge_tags},
                 )
             },
-            allow_empty=True,
+            allow_empty=False,
         )
 
     def _create_regions_from_vertices(
@@ -244,7 +244,7 @@ class FEAnalysis:
                     extra_args={"region_coordinates": vertex_coordinates},
                 )
             },
-            allow_empty=True,
+            allow_empty=False,
         )
         # obj = Region(name, "given vertices", self.domain, "")
         # obj.vertices = vertices
@@ -271,7 +271,6 @@ class FEAnalysis:
         for index, ((youngs_modulus, poissons_ratio), vertices) in enumerate(
             material_properties_to_vertices.items()
         ):
-            print(len(vertices))
             self._append_region_value_to_file(
                 "materials.txt",
                 f"MaterialRegion{index}",
@@ -348,7 +347,12 @@ class FEAnalysis:
     ) -> Equations:
         # lhs_terms = Terms(lhs_terms)
         rhs_terms = Terms(rhs_terms_per_lhs_term)
-        return Equations([Equation(name + str(index), lhs_term + rhs_terms) for index, lhs_term in enumerate(lhs_terms)])
+        return Equations(
+            [
+                Equation(name + str(index), lhs_term + rhs_terms)
+                for index, lhs_term in enumerate(lhs_terms)
+            ]
+        )
         # return Equations([Equation(name, lhs_terms + rhs_terms)])
 
     @staticmethod
