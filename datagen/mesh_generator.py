@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 import random
 import sys
 from collections import OrderedDict
@@ -14,27 +15,42 @@ from shapely.ops import unary_union
 from shapely.plotting import plot_polygon
 from sklearn.cluster import AgglomerativeClustering, KMeans
 
+
+@dataclass
+class Material:
+    name: str
+    youngs_modulus: float
+    poissons_ratio: float
+
+    def __post_init__(self):
+        self.youngs_modulus = float(self.youngs_modulus)
+        self.poissons_ratio = float(self.poissons_ratio)
+
+    def as_tuple(self) -> Tuple[float, float]:
+        return (self.youngs_modulus, self.poissons_ratio)
+
+
 MATERIALS = [
-    {"name": "Steel", "youngs_modulus": 210000, "poissons_ratio": 0.3},
-    {"name": "Aluminum", "youngs_modulus": 68900, "poissons_ratio": 0.33},
-    {"name": "Copper", "youngs_modulus": 117000, "poissons_ratio": 0.34},
-    {"name": "Brass", "youngs_modulus": 97000, "poissons_ratio": 0.33},
-    {"name": "Titanium", "youngs_modulus": 105000, "poissons_ratio": 0.34},
-    {"name": "Stainless Steel", "youngs_modulus": 195000, "poissons_ratio": 0.3},
-    {"name": "Nickel", "youngs_modulus": 207000, "poissons_ratio": 0.31},
-    {"name": "Zinc", "youngs_modulus": 100000, "poissons_ratio": 0.25},
-    {"name": "Lead", "youngs_modulus": 17500, "poissons_ratio": 0.44},
-    {"name": "Magnesium", "youngs_modulus": 46500, "poissons_ratio": 0.35},
-    {"name": "Concrete", "youngs_modulus": 30000, "poissons_ratio": 0.2},
-    {"name": "Wood", "youngs_modulus": 11000, "poissons_ratio": 0.35},
-    {"name": "Glass", "youngs_modulus": 64000, "poissons_ratio": 0.22},
-    {"name": "Plastic", "youngs_modulus": 3000, "poissons_ratio": 0.4},
-    {"name": "Rubber", "youngs_modulus": 0.01, "poissons_ratio": 0.499},
-    {"name": "Bronze", "youngs_modulus": 120000, "poissons_ratio": 0.34},
-    {"name": "Tungsten", "youngs_modulus": 411000, "poissons_ratio": 0.28},
-    {"name": "Silver", "youngs_modulus": 83000, "poissons_ratio": 0.37},
-    {"name": "Gold", "youngs_modulus": 78000, "poissons_ratio": 0.44},
-    {"name": "Platinum", "youngs_modulus": 168000, "poissons_ratio": 0.38},
+    Material(name="Steel", youngs_modulus=210000, poissons_ratio=0.3),
+    Material(name="Aluminum", youngs_modulus=68900, poissons_ratio=0.33),
+    Material(name="Copper", youngs_modulus=117000, poissons_ratio=0.34),
+    Material(name="Brass", youngs_modulus=97000, poissons_ratio=0.33),
+    Material(name="Titanium", youngs_modulus=105000, poissons_ratio=0.34),
+    Material(name="Stainless Steel", youngs_modulus=195000, poissons_ratio=0.3),
+    Material(name="Nickel", youngs_modulus=207000, poissons_ratio=0.31),
+    Material(name="Zinc", youngs_modulus=100000, poissons_ratio=0.25),
+    Material(name="Lead", youngs_modulus=17500, poissons_ratio=0.44),
+    Material(name="Magnesium", youngs_modulus=46500, poissons_ratio=0.35),
+    Material(name="Concrete", youngs_modulus=30000, poissons_ratio=0.2),
+    Material(name="Wood", youngs_modulus=11000, poissons_ratio=0.35),
+    Material(name="Glass", youngs_modulus=64000, poissons_ratio=0.22),
+    Material(name="Plastic", youngs_modulus=3000, poissons_ratio=0.4),
+    Material(name="Rubber", youngs_modulus=0.01, poissons_ratio=0.499),
+    Material(name="Bronze", youngs_modulus=120000, poissons_ratio=0.34),
+    Material(name="Tungsten", youngs_modulus=411000, poissons_ratio=0.28),
+    Material(name="Silver", youngs_modulus=83000, poissons_ratio=0.37),
+    Material(name="Gold", youngs_modulus=78000, poissons_ratio=0.44),
+    Material(name="Platinum", youngs_modulus=168000, poissons_ratio=0.38),
 ]
 
 
@@ -46,6 +62,7 @@ class MeshGenerator:
         holes_per_polygon_range: Tuple[int, int] = (0, 3),
         points_per_hole_range: Tuple[int, int] = (3, 4),
         num_regions: Tuple[int, int] = (1, 5),
+        force_magnitude_range: Tuple[int, int] = (500, 5000),
         random_seed=None,
     ):
         self.num_polygons_range = num_polygons_range
@@ -53,6 +70,7 @@ class MeshGenerator:
         self.holes_per_polygon_range = holes_per_polygon_range
         self.points_per_hole_range = points_per_hole_range
         self.num_regions = num_regions
+        self.force_magnitude_range = force_magnitude_range
         self.random = random.Random(random_seed)
 
         self.mesh_path: str = None
@@ -359,7 +377,6 @@ class MeshGenerator:
 
     def _create_regions_randomly(self) -> List[List]:
         method = random.choice(["kmeans", "agglomerative"])
-        print(method)
         if method == "kmeans":
             return self._create_regions_with_kmeans()
         else:
@@ -370,17 +387,11 @@ class MeshGenerator:
     def _assign_materials_to_regions(
         regions: List[List[Tuple[float, float]]],
     ) -> Dict[Tuple[float, float], List[Tuple[float, float]]]:
-        materials_dict = {}
-
-        # Randomly select material properties for each region
-        for i in range(len(regions)):
-            material = random.choice(MATERIALS)
-            material_properties = (
-                material["youngs_modulus"],
-                material["poissons_ratio"],
-            )
-            materials_dict[material_properties] = regions[i]
-        return materials_dict
+        return {
+            random.choice(MATERIALS).as_tuple(): region
+            for region in regions
+            if len(region) > 0
+        }
 
     def sample_conditions(
         self,
@@ -458,11 +469,13 @@ class MeshGenerator:
             total_region_coordinates = sum(len(region) for region in region_coordinates)
             if len(coords) != total_region_coordinates:
                 continue
-                    
 
             materials_assigned = self._assign_materials_to_regions(region_coordinates)
-            total_final_coordinates= sum(len(region) for region in materials_assigned.values())
-            if len(coords) !=total_final_coordinates:
+
+            total_final_coordinates = sum(
+                len(region) for region in materials_assigned.values()
+            )
+            if len(coords) != total_final_coordinates:
                 continue
 
             condition = {
@@ -483,8 +496,10 @@ class MeshGenerator:
                 (
                     point_force,
                     (
-                        self.random.randint(500, 5000) * self.random.choice(sign),
-                        self.random.randint(500, 5000) * self.random.choice(sign),
+                        self.random.randint(*self.force_magnitude_range)
+                        * self.random.choice(sign),
+                        self.random.randint(*self.force_magnitude_range)
+                        * self.random.choice(sign),
                     ),
                 )
                 for point_force in condition["point_forces"]
@@ -493,8 +508,10 @@ class MeshGenerator:
                 (
                     edge_force,
                     (
-                        self.random.randint(500, 5000) * self.random.choice(sign),
-                        self.random.randint(500, 5000) * self.random.choice(sign),
+                        self.random.randint(*self.force_magnitude_range)
+                        * self.random.choice(sign),
+                        self.random.randint(*self.force_magnitude_range)
+                        * self.random.choice(sign),
                     ),
                 )
                 for edge_force in condition["edge_forces"]

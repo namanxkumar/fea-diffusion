@@ -206,7 +206,7 @@ class FEAnalysis:
                     extra_args={"bounding_tags": edge_tags},
                 )
             },
-            allow_empty=False,
+            allow_empty=True,
         )
 
     def _create_regions_from_vertices(
@@ -244,7 +244,7 @@ class FEAnalysis:
                     extra_args={"region_coordinates": vertex_coordinates},
                 )
             },
-            allow_empty=False,
+            allow_empty=True,
         )
         # obj = Region(name, "given vertices", self.domain, "")
         # obj.vertices = vertices
