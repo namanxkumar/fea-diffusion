@@ -64,7 +64,9 @@ class FEADataset(Dataset):
         self.image_size = image_size
         self.augmentation = augmentation
 
-        self.number_of_plate_geometries = len([directory for directory in self.path.iterdir() if directory.is_dir()])
+        self.number_of_plate_geometries = len(
+            [directory for directory in self.path.iterdir() if directory.is_dir()]
+        )
 
         self.conditions_per_plate_geometry = conditions_per_plate
 
@@ -283,7 +285,9 @@ class Trainer:
     ):
         super().__init__()
         assert num_steps_per_condition >= 2, "num_steps_per_condition must be >= 2"
-        assert num_steps_per_sample_condition >= 2, "num_steps_per_sample_condition must be >= 2"
+        assert (
+            num_steps_per_sample_condition >= 2
+        ), "num_steps_per_sample_condition must be >= 2"
 
         self.accelerator = Accelerator(
             split_batches=use_batch_split_over_devices,
@@ -317,14 +321,14 @@ class Trainer:
             dataset_folder,
             image_size=dataset_image_size,
             augmentation=use_dataset_augmentation,
-            num_steps = num_steps_per_condition,
+            num_steps=num_steps_per_condition,
         )
         self.sample_dataset = FEADataset(
             sample_dataset_folder,
             image_size=dataset_image_size,
             augmentation=False,
             conditions_per_plate=num_sample_conditions_per_plate,
-            num_steps = num_steps_per_sample_condition,
+            num_steps=num_steps_per_sample_condition,
         )
         self.num_samples = len(self.sample_dataset)
 
@@ -488,12 +492,16 @@ class Trainer:
             raise NotImplementedError("Only l1 and l2 loss are supported")
 
     @staticmethod
-    def yield_data(dataloader, skipped_dataloader=None) -> Dict[str, Tensor]:
+    def yield_data(
+        dataloader: DataLoader, skipped_dataloader: Optional[DataLoader] = None
+    ):
         if exists(skipped_dataloader):
             for data in skipped_dataloader:
+                data: Dict[str, Tensor]
                 yield data
         while True:
             for data in dataloader:
+                data: Dict[str, Tensor]
                 yield data
 
     @staticmethod
@@ -567,7 +575,11 @@ class Trainer:
             return images, loss
 
     def sample_and_save(
-        self, milestone: Union[int, str] = None, use_ema_model: bool = False, save=True, progress_bar=False
+        self,
+        milestone: Union[int, str] = None,
+        use_ema_model: bool = False,
+        save=True,
+        progress_bar=False,
     ):
         sampled_images = []
         image_filenames = []
@@ -597,7 +609,12 @@ class Trainer:
                 step = (index % (num_conditions * num_steps)) % num_steps + 1
 
                 if exists(milestone):
-                    pathname = self.results_folder / f"{milestone}" / f"{plate}" / f"{condition}"
+                    pathname = (
+                        self.results_folder
+                        / f"{milestone}"
+                        / f"{plate}"
+                        / f"{condition}"
+                    )
                 else:
                     pathname = self.results_folder / f"{plate}" / f"{condition}"
                 pathname.mkdir(parents=True, exist_ok=True)
@@ -608,9 +625,7 @@ class Trainer:
                     vmin=0,
                     vmax=255,
                 )
-                image_filenames.append(
-                    str(pathname / f"sample_{axis}_{step}.png")
-                )
+                image_filenames.append(str(pathname / f"sample_{axis}_{step}.png"))
         else:
             image_filenames = None
         return sampled_images, image_filenames, total_sample_loss
