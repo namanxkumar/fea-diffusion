@@ -497,13 +497,16 @@ class FEAnalysis:
             # system("sfepy-view {}.vtk -f {}:vs {} -o {}".format(path.join(self.data_dir, self.region_filename), region_name, self.common_config, filepath))
 
             directory = self.condition_dir if self.save_meshes else self.data_dir
-
-            plot(
-                filenames=["{}.vtk".format(path.join(directory, self.region_filename))],
-                fields=[(region_name, "vs")],
-                window_size=(self.image_size, self.image_size),
-                screenshot=filepath,
-            )
+            if "Omega" in region_name:
+                continue
+            
+            else:
+                plot(
+                    filenames=["{}.vtk".format(path.join(directory, self.region_filename))],
+                    fields=[(region_name, "vs")],
+                    window_size=(self.image_size, self.image_size),
+                    screenshot=filepath,
+                )
 
             if crop:
                 self.crop_image(filepath, self.bounds)

@@ -96,7 +96,7 @@ class FEADataset(Dataset):
 
     @staticmethod
     def _scale_log(value: float) -> float:
-        return np.log(value + 1)
+        return np.log(value + 1).item()
 
     def __len__(self):
         return self.total_samples
@@ -107,7 +107,7 @@ class FEADataset(Dataset):
         plate_index = (index // (self.samples_per_plate)) + 1
         condition_index = (index % (self.samples_per_plate)) // self.num_steps + 1
         step_index = (index % (self.samples_per_plate)) % self.num_steps + 1
-
+        sample = {}
         sample["plate_index"] = torch.tensor(plate_index)
         sample["condition_index"] = torch.tensor(condition_index)
         sample["iteration_index"] = torch.tensor(step_index)
@@ -125,8 +125,6 @@ class FEADataset(Dataset):
                 transforms.Lambda(lambda x: TF.invert(x)),
             ]
         )
-
-        sample = {}
 
         # LOAD IMAGES
 
@@ -222,7 +220,8 @@ class FEADataset(Dataset):
         ) as f:
             magnitudes = list(map(lambda x: tuple(x.strip().split(":")), f.readlines()))
 
-        forces = []
+        edge_forces = []
+        vertex_forces = []
 
         for name, values in magnitudes:
             name: str
@@ -254,27 +253,43 @@ class FEADataset(Dataset):
                 normalized_magnitude = tuple(
                     map(
                         lambda value: np.sign(value)
-                        * (self._scale_log(float(abs(value))))
-                        * (step_index / self.num_steps),
+                        * (
+                            self._scale_log(
+                                float(abs(value) * (step_index / self.num_steps))
+                            )
+                        ),
                         values,
                     )
                 )
 
             # Multiply force tensor by normalized magnitude (1s are multiplied by the magnitude, 0s are left as 0s)
-            forces.append(
-                torch.cat(
-                    (
-                        force_tensor * normalized_magnitude[0],
-                        force_tensor * normalized_magnitude[1],
-                    ),
-                    dim=0,
+            if "Edge" in name:
+                edge_forces.append(
+                    torch.cat(
+                        (
+                            force_tensor * normalized_magnitude[0],
+                            force_tensor * normalized_magnitude[1],
+                        ),
+                        dim=0,
+                    )
                 )
-            )
+            elif "Vertex" in name:
+                vertex_forces.append(
+                    torch.cat(
+                        (
+                            force_tensor * normalized_magnitude[0],
+                            force_tensor * normalized_magnitude[1],
+                        ),
+                        dim=0,
+                    )
+                )
 
         # Combine all forces into one tensor
-        sample["forces"] = torch.clamp(
-            torch.sum(torch.stack(forces, dim=0), dim=0), min=-1.0, max=1.0
-        )
+        force_tensor = torch.zeros(sample["geometry"].shape)
+        for force in edge_forces + vertex_forces:
+            force_tensor = torch.where(force != 0, force, force_tensor)
+
+        sample["forces"] = force_tensor
 
         # MATERIAL IMAGES
 
@@ -307,12 +322,12 @@ class FEADataset(Dataset):
                     np.sign(youngs_modulus)
                     * self._scale_min_max(
                         float(abs(youngs_modulus)), self.min_max_youngs_modulus
-                    ),
+                    )
                 )
                 if exists(self.min_max_youngs_modulus)
                 else (
                     np.sign(youngs_modulus)
-                    * self._scale_log(float(abs(youngs_modulus))),
+                    * self._scale_log(float(abs(youngs_modulus)))
                 )
             )
             normalized_poissons_ratio = float(poissons_ratio)
@@ -320,17 +335,19 @@ class FEADataset(Dataset):
             materials.append(
                 torch.cat(
                     (
-                        region_tensor * normalized_youngs_modulus,
+                        region_tensor * float(normalized_youngs_modulus),
                         region_tensor * normalized_poissons_ratio,
                     ),
                     dim=0,
                 )
             )
-
-        sample["materials"] = torch.clamp(
-            torch.sum(torch.stack(materials, dim=0), dim=0), min=-1.0, max=1.0
-        )
-
+        material_tensor = torch.zeros(sample["geometry"].shape)
+        for material in materials:
+            material_tensor = torch.where(
+                material != 0, material, material_tensor
+            )
+        # sample["materials"] = torch.sum(torch.stack(materials, dim=0), dim=0)
+        sample["materials"] = material_tensor
         return sample
 
 
