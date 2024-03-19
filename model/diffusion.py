@@ -52,7 +52,12 @@ class FEADataset(Dataset):
         augmentation: bool = False,
         conditions_per_plate: int = 4,
         num_steps: int = 11,
-        min_max_magnitude: Tuple[int, int] = (0, 5000),
+        min_max_magnitude: Optional[
+            Tuple[int, int]
+        ] = None,  # If not provided, log scaling is used
+        min_max_youngs_modulus: Optional[
+            Tuple[int, int]
+        ] = None,  # If not provided, log scaling is used
     ):
         super().__init__()
         self.path = Path(f"{folder}")
@@ -64,7 +69,9 @@ class FEADataset(Dataset):
         self.image_size = image_size
         self.augmentation = augmentation
 
-        self.number_of_plate_geometries = len([directory for directory in self.path.iterdir() if directory.is_dir()])
+        self.number_of_plate_geometries = len(
+            [directory for directory in self.path.iterdir() if directory.is_dir()]
+        )
 
         self.conditions_per_plate_geometry = conditions_per_plate
 
@@ -75,6 +82,7 @@ class FEADataset(Dataset):
         self.total_samples = self.number_of_plate_geometries * self.samples_per_plate
 
         self.min_max_magnitude = min_max_magnitude
+        self.min_max_youngs_modulus = min_max_youngs_modulus
 
     def normalize_by_division(self, tensor: Tensor, value: float) -> Tensor:
         return tensor / value
@@ -82,13 +90,29 @@ class FEADataset(Dataset):
     def normalize_to_negative_one_to_one(self, tensor: Tensor) -> Tensor:
         return tensor * 2.0 - 1.0
 
+    @staticmethod
+    def _scale_min_max(value: float, min_max: Tuple[float, float]) -> float:
+        return (value - min_max[0]) / (min_max[1] - min_max[0])
+
+    @staticmethod
+    def _scale_log(value: float) -> float:
+        return np.log(value + 1).item()
+
     def __len__(self):
         return self.total_samples
 
     def __getitem__(self, index: int) -> Dict[str, Tensor]:
+        # GET PLATE INDEX, CONDITION INDEX, AND STEP INDEX
+
         plate_index = (index // (self.samples_per_plate)) + 1
         condition_index = (index % (self.samples_per_plate)) // self.num_steps + 1
         step_index = (index % (self.samples_per_plate)) % self.num_steps + 1
+        sample = {}
+        sample["plate_index"] = torch.tensor(plate_index)
+        sample["condition_index"] = torch.tensor(condition_index)
+        sample["iteration_index"] = torch.tensor(step_index)
+
+        # DEFINE TRANSFORMS
 
         transform = transforms.Compose(
             [
@@ -102,7 +126,9 @@ class FEADataset(Dataset):
             ]
         )
 
-        sample = {}
+        # LOAD IMAGES
+
+        # GEOMETRY IMAGE
 
         sample["geometry"] = transform(
             Image.open(self.path / f"{plate_index}" / f"input.{self.extension}")
@@ -112,38 +138,37 @@ class FEADataset(Dataset):
                 torch.clamp(255 * sample["geometry"], min=0, max=1.0), 0.5, 0.0
             ).int()
         ).float()
-        sample["plate_index"] = torch.tensor(plate_index)
-        sample["condition_index"] = torch.tensor(condition_index)
-        sample["iteration_index"] = torch.tensor(step_index)
+
+        # PREVIOUS ITERATION IMAGE
 
         # if step_index == 1:
-        # sample['previous_iteration'] = (
-        #     sample['geometry'],
-        # )*2
+        sample["previous_iteration"] = (sample["geometry"],) * 2
         # else:
-        sample["previous_iteration"] = (
-            self.normalize_to_negative_one_to_one(
-                transform(
-                    Image.open(
-                        self.path
-                        / f"{plate_index}"
-                        / f"{condition_index}"
-                        / f"outputs_displacement_x_0.{self.extension}"
-                    )
-                )
-            ),
-            self.normalize_to_negative_one_to_one(
-                transform(
-                    Image.open(
-                        self.path
-                        / f"{plate_index}"
-                        / f"{condition_index}"
-                        / f"outputs_displacement_y_0.{self.extension}"
-                    )
-                )
-            ),
-        )
+        # sample["previous_iteration"] = (
+        #     self.normalize_to_negative_one_to_one(
+        #         transform(
+        #             Image.open(
+        #                 self.path
+        #                 / f"{plate_index}"
+        #                 / f"{condition_index}"
+        #                 / f"outputs_displacement_x_0.{self.extension}"
+        #             )
+        #         )
+        #     ),
+        #     self.normalize_to_negative_one_to_one(
+        #         transform(
+        #             Image.open(
+        #                 self.path
+        #                 / f"{plate_index}"
+        #                 / f"{condition_index}"
+        #                 / f"outputs_displacement_y_0.{self.extension}"
+        #             )
+        #         )
+        #     ),
+        # )
         sample["previous_iteration"] = torch.cat(sample["previous_iteration"], dim=0)
+
+        # DISPLACEMENT IMAGE
 
         sample["displacement"] = (
             self.normalize_to_negative_one_to_one(
@@ -169,6 +194,8 @@ class FEADataset(Dataset):
         )
         sample["displacement"] = torch.cat(sample["displacement"], dim=0)
 
+        # CONSTRAINTS IMAGE
+
         constraints = []
         condition_path = self.path / f"{plate_index}" / f"{condition_index}"
         for path in condition_path.iterdir():
@@ -186,15 +213,20 @@ class FEADataset(Dataset):
             ).int()
         ).float()
 
+        # FORCE IMAGES
+
         with open(
             self.path / f"{plate_index}" / f"{condition_index}" / f"magnitudes.txt", "r"
         ) as f:
             magnitudes = list(map(lambda x: tuple(x.strip().split(":")), f.readlines()))
 
-        forces = []
+        edge_forces = []
+        vertex_forces = []
 
         for name, values in magnitudes:
-            values = eval(values)
+            name: str
+            values: Tuple[float, float] = eval(values)
+
             force_tensor = transform(
                 Image.open(
                     self.path
@@ -203,33 +235,119 @@ class FEADataset(Dataset):
                     / f"regions_{name}.{self.extension}"
                 )
             )
+
+            # Ensure all values are either 0 or 1
             force_tensor = torch.clamp(255 * force_tensor, min=0, max=1.0)
-            normalized_magnitude = tuple(
-                map(
-                    lambda value: np.sign(value)
-                    * (
-                        (float(abs(value)) - self.min_max_magnitude[0])
-                        / (self.min_max_magnitude[1] - self.min_max_magnitude[0])
+
+            # Normalize magnitudes
+            if exists(self.min_max_magnitude):
+                normalized_magnitude = tuple(
+                    map(
+                        lambda value: self._scale_min_max(
+                            float(abs(value)), self.min_max_magnitude
+                        ),
+                        values,
                     )
-                    * (step_index / self.num_steps),
-                    values,
+                )
+            else:
+                normalized_magnitude = tuple(
+                    map(
+                        lambda value: np.sign(value)
+                        * (
+                            self._scale_log(
+                                float(abs(value) * (step_index / self.num_steps))
+                            )
+                        ),
+                        values,
+                    )
+                )
+
+            # Multiply force tensor by normalized magnitude (1s are multiplied by the magnitude, 0s are left as 0s)
+            if "Edge" in name:
+                edge_forces.append(
+                    torch.cat(
+                        (
+                            force_tensor * normalized_magnitude[0],
+                            force_tensor * normalized_magnitude[1],
+                        ),
+                        dim=0,
+                    )
+                )
+            elif "Vertex" in name:
+                vertex_forces.append(
+                    torch.cat(
+                        (
+                            force_tensor * normalized_magnitude[0],
+                            force_tensor * normalized_magnitude[1],
+                        ),
+                        dim=0,
+                    )
+                )
+
+        # Combine all forces into one tensor
+        force_tensor = torch.zeros(sample["geometry"].shape)
+        for force in edge_forces + vertex_forces:
+            force_tensor = torch.where(force != 0, force, force_tensor)
+
+        sample["forces"] = force_tensor
+
+        # MATERIAL IMAGES
+
+        with open(
+            self.path / f"{plate_index}" / f"{condition_index}" / f"materials.txt", "r"
+        ) as f:
+            regions = list(map(lambda x: tuple(x.strip().split(":")), f.readlines()))
+
+        materials = []
+
+        for name, values in regions:
+            name: str
+            youngs_modulus, poissons_ratio = eval(values)
+
+            region_tensor = transform(
+                Image.open(
+                    self.path
+                    / f"{plate_index}"
+                    / f"{condition_index}"
+                    / f"regions_{name}.{self.extension}"
                 )
             )
-            forces.append(
+
+            # Ensure all values are either 0 or 1
+            region_tensor = torch.clamp(255 * region_tensor, min=0, max=1.0)
+
+            # Normalize youngs modulus and poisson's ratio
+            normalized_youngs_modulus = (
+                (
+                    np.sign(youngs_modulus)
+                    * self._scale_min_max(
+                        float(abs(youngs_modulus)), self.min_max_youngs_modulus
+                    )
+                )
+                if exists(self.min_max_youngs_modulus)
+                else (
+                    np.sign(youngs_modulus)
+                    * self._scale_log(float(abs(youngs_modulus)))
+                )
+            )
+            normalized_poissons_ratio = float(poissons_ratio)
+
+            materials.append(
                 torch.cat(
                     (
-                        force_tensor * normalized_magnitude[0],
-                        force_tensor * normalized_magnitude[1],
+                        region_tensor * float(normalized_youngs_modulus),
+                        region_tensor * normalized_poissons_ratio,
                     ),
                     dim=0,
                 )
             )
-
-        # Combine all forces into one tensor
-        sample["forces"] = torch.clamp(
-            torch.sum(torch.stack(forces, dim=0), dim=0), min=-1.0, max=1.0
-        )
-
+        material_tensor = torch.zeros(sample["geometry"].shape)
+        for material in materials:
+            material_tensor = torch.where(
+                material != 0, material, material_tensor
+            )
+        # sample["materials"] = torch.sum(torch.stack(materials, dim=0), dim=0)
+        sample["materials"] = material_tensor
         return sample
 
 
@@ -283,7 +401,9 @@ class Trainer:
     ):
         super().__init__()
         assert num_steps_per_condition >= 2, "num_steps_per_condition must be >= 2"
-        assert num_steps_per_sample_condition >= 2, "num_steps_per_sample_condition must be >= 2"
+        assert (
+            num_steps_per_sample_condition >= 2
+        ), "num_steps_per_sample_condition must be >= 2"
 
         self.accelerator = Accelerator(
             split_batches=use_batch_split_over_devices,
@@ -317,14 +437,14 @@ class Trainer:
             dataset_folder,
             image_size=dataset_image_size,
             augmentation=use_dataset_augmentation,
-            num_steps = num_steps_per_condition,
+            num_steps=num_steps_per_condition,
         )
         self.sample_dataset = FEADataset(
             sample_dataset_folder,
             image_size=dataset_image_size,
             augmentation=False,
             conditions_per_plate=num_sample_conditions_per_plate,
-            num_steps = num_steps_per_sample_condition,
+            num_steps=num_steps_per_sample_condition,
         )
         self.num_samples = len(self.sample_dataset)
 
@@ -488,12 +608,16 @@ class Trainer:
             raise NotImplementedError("Only l1 and l2 loss are supported")
 
     @staticmethod
-    def yield_data(dataloader, skipped_dataloader=None) -> Dict[str, Tensor]:
+    def yield_data(
+        dataloader: DataLoader, skipped_dataloader: Optional[DataLoader] = None
+    ):
         if exists(skipped_dataloader):
             for data in skipped_dataloader:
+                data: Dict[str, Tensor]
                 yield data
         while True:
             for data in dataloader:
+                data: Dict[str, Tensor]
                 yield data
 
     @staticmethod
@@ -567,7 +691,11 @@ class Trainer:
             return images, loss
 
     def sample_and_save(
-        self, milestone: Union[int, str] = None, use_ema_model: bool = False, save=True, progress_bar=False
+        self,
+        milestone: Union[int, str] = None,
+        use_ema_model: bool = False,
+        save=True,
+        progress_bar=False,
     ):
         sampled_images = []
         image_filenames = []
@@ -597,7 +725,12 @@ class Trainer:
                 step = (index % (num_conditions * num_steps)) % num_steps + 1
 
                 if exists(milestone):
-                    pathname = self.results_folder / f"{milestone}" / f"{plate}" / f"{condition}"
+                    pathname = (
+                        self.results_folder
+                        / f"{milestone}"
+                        / f"{plate}"
+                        / f"{condition}"
+                    )
                 else:
                     pathname = self.results_folder / f"{plate}" / f"{condition}"
                 pathname.mkdir(parents=True, exist_ok=True)
@@ -608,9 +741,7 @@ class Trainer:
                     vmin=0,
                     vmax=255,
                 )
-                image_filenames.append(
-                    str(pathname / f"sample_{axis}_{step}.png")
-                )
+                image_filenames.append(str(pathname / f"sample_{axis}_{step}.png"))
         else:
             image_filenames = None
         return sampled_images, image_filenames, total_sample_loss
