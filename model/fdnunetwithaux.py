@@ -352,9 +352,9 @@ class AuxiliaryRangePredictor(nn.Module):
                 input_dim * image_height * image_width,
                 hidden_dim,
             ),
-            nn.SiLU(),
+            nn.ReLU(),
             *[
-                nn.Sequential(nn.Linear(hidden_dim, hidden_dim), nn.SiLU())
+                nn.Sequential(nn.Linear(hidden_dim, hidden_dim), nn.ReLU())
                 for _ in range(num_layers - 2)
             ],
             nn.Linear(hidden_dim, output_dim),
@@ -484,6 +484,11 @@ class AuxiliaryRangePredictor(nn.Module):
 
 
 class FDNUNetWithAux(nn.Module):
+    """
+    FDNUNet with Auxiliary Range Prediction
+
+    Note: Model outputs absolute value of ranges, take the negative of even indices to get the range
+    """
     def __init__(
         self,
         input_dim: int,
@@ -768,6 +773,9 @@ class FDNUNetWithAux(nn.Module):
         # x = self.middle_block_2(x, auxiliary_condition_features[-1], time_embedding = time_embedding)
 
         auxiliary_range = self.auxiliary_range_predictor(x)
+
+        # Take the negative of even indices to get the range
+        auxiliary_range[..., ::2] = -auxiliary_range[..., ::2]
 
         for index, (
             block_1,
