@@ -2,7 +2,7 @@ import math
 import os
 from os import path
 from typing import Dict, List, Optional, Tuple
-
+import pyvista as pv
 import numpy as np
 from PIL import Image
 from sfepy.base.base import IndexedStruct, Struct, output
@@ -162,6 +162,21 @@ class FEAnalysis:
 
         self.nls_solver = self._create_nls_solver()
         self.num_steps = num_steps
+
+    def displacement_max_min(self, filepathroot):
+        # if self.num_steps <= 10:
+        #     mesh = pv.read(filepathroot + '/domain.{}.vtk').format(self.num_steps-1)
+        # else:
+        #     mesh = pv.read(filepathroot + '/domain.00.vtk')
+        mesh = pv.read(filepathroot + '/domain.{}.vtk'.format(self.num_steps-1))
+        displacement_x = np.array(mesh.point_data["u"][:,0])
+        displacement_y = np.array(mesh.point_data["u"][:,1])
+        max_displacement_x = np.max(displacement_x)
+        min_displacement_x = np.min(displacement_x)
+        max_displacement_y = np.max(displacement_y)
+        min_displacement_y = np.min(displacement_y)
+            
+        np.savetxt('displacement_extremes.txt', [[max_displacement_x, min_displacement_x], [max_displacement_y, min_displacement_y]], delimiter=',')
 
     def _append_region_value_to_file(
         self, filename: str, region_name: str, value: Tuple[float, float]
