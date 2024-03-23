@@ -1,7 +1,6 @@
 from pathlib import Path
 
 from tqdm.autonotebook import tqdm
-
 from .fdnunet import FDNUNet
 from .fdnunetwithaux import FDNUNetWithAux
 
@@ -29,6 +28,8 @@ import logging
 from datetime import datetime
 
 from typing import Optional, Dict, Tuple, List, Union
+
+from linecache import getline
 
 # In regular diffusion implementations, a groundtruth image is provided from the dataset, a random timestep is generated for each forward pass,
 # the corresponding amount of noise is added to the groundtruth image to degrade it, and the predicted image is sampled from the model.
@@ -178,7 +179,8 @@ class FEADataset(Dataset):
                         self.path
                         / f"{plate_index}"
                         / f"{condition_index}"
-                        / f"outputs_displacement_x_{step_index}.{self.extension}"
+                        / f"outputs_displacement_x_1.{self.extension}"
+                        # / f"outputs_displacement_x_{step_index}.{self.extension}"
                     )
                 )
             ),
@@ -188,7 +190,8 @@ class FEADataset(Dataset):
                         self.path
                         / f"{plate_index}"
                         / f"{condition_index}"
-                        / f"outputs_displacement_y_{step_index}.{self.extension}"
+                        / f"outputs_displacement_y_1.{self.extension}"
+                        # / f"outputs_displacement_y_{step_index}.{self.extension}"
                     )
                 )
             ),
@@ -348,8 +351,20 @@ class FEADataset(Dataset):
         # sample["materials"] = torch.sum(torch.stack(materials, dim=0), dim=0)
         sample["materials"] = material_tensor
 
-        # TODO: Add range
-        sample["displacement_range"] = None
+        path = str(self.path / f"{plate_index}" / f"{condition_index}" / f"ranges.txt")
+        line = (step_index - 1) * 2
+        ranges = [
+            getline(
+                path,
+                step,
+            )
+            for step in [line, line + 1]
+        ]
+        ranges = list(map(lambda x: list(eval(tuple(x.strip().split(":"))[1])), ranges))
+        # combine list of lists into a single list
+        ranges = [item for sublist in ranges for item in sublist]
+
+        sample["displacement_range"] = torch.tensor(ranges, dtype=torch.float32)
 
         return sample
 

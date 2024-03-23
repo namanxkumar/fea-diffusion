@@ -547,31 +547,31 @@ class FEAnalysis:
         if save_strain:
             output_file_config.update(strain_config)
 
+        save_only_first = True
         for step in range(1, self.num_steps):
-            save_only_last = True
-            if save_only_last:
-                save = step == self.num_steps - 1
+            if save_only_first:
+                save = step == 1
             else:
-                save = False
+                save = True
 
             for type, config in output_file_config.items():
-                name = "{}_{}".format(type, step) if not save_only_last else type
-                filepath = "{}_{}.png".format(filepathroot, name)
-                scalar_bar_range_path = path.join(
-                    self.condition_dir, "ranges.txt"
+                name = "{}_{}".format(type, step)
+                filepath = "{}_{}.png".format(
+                    filepathroot, name
                 )
+                scalar_bar_range_path = path.join(self.condition_dir, "ranges.txt")
                 # system("sfepy-view domain.??.vtk -f {} -s {} {} -o {}".format(config, step, self.common_config, filename))
 
                 # these values are found by trial and error and correspond to the current force magnitude range (max 5000N), need updating if force magnitude range changes
-                # if type == "displacement_x" or type == "displacement_y":
-                #     scalar_bar_range = [-0.05, 0.05]
-                # elif type == "stress_x" or type == "stress_y":
-                #     scalar_bar_range = [
-                #         -5e5,
-                #         5e5,
-                #     ]  # along x axis: [-17e5, 6.55e5], along y axis: [-3.66e5, 7.86e5]
-                # elif type == "strain_x" or type == "strain_y":
-                #     scalar_bar_range = [-10, 10]
+                if type == "displacement_x" or type == "displacement_y":
+                    scalar_bar_range = [-0.05, 0.05]
+                elif type == "stress_x" or type == "stress_y":
+                    scalar_bar_range = [
+                        -5e5,
+                        5e5,
+                    ]  # along x axis: [-17e5, 6.55e5], along y axis: [-3.66e5, 7.86e5]
+                elif type == "strain_x" or type == "strain_y":
+                    scalar_bar_range = [-10, 10]
 
                 if self.save_meshes:
                     directory = self.condition_dir
