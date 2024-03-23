@@ -606,22 +606,26 @@ class Trainer:
     ) -> Tensor:
         # return F.l1_loss(sampled_iteration, groundtruth_iteration, reduction='sum')
         if self.loss_type == "l1":
-            return sum(
-                [
-                    F.l1_loss(sampled_tensor, groundtruth_tensor)
-                    for sampled_tensor, groundtruth_tensor in zip(
-                        sampled_tensors, groundtruth_tensors
-                    )
-                ]
+            return torch.sum(
+                torch.stack(
+                    [
+                        F.l1_loss(sampled_tensor, groundtruth_tensor)
+                        for sampled_tensor, groundtruth_tensor in zip(
+                            sampled_tensors, groundtruth_tensors
+                        )
+                    ]
+                )
             )
         elif self.loss_type == "l2":
-            return sum(
-                [
-                    F.mse_loss(sampled_tensor, groundtruth_tensor)
-                    for sampled_tensor, groundtruth_tensor in zip(
-                        sampled_tensors, groundtruth_tensors
-                    )
-                ]
+            return torch.sum(
+                torch.stack(
+                    [
+                        F.mse_loss(sampled_tensor, groundtruth_tensor)
+                        for sampled_tensor, groundtruth_tensor in zip(
+                            sampled_tensors, groundtruth_tensors
+                        )
+                    ]
+                )
             )
         else:
             raise NotImplementedError("Only l1 and l2 loss are supported")
@@ -716,6 +720,9 @@ class Trainer:
         total_sample_loss = 0.0
         num_batches = 0
 
+        num_conditions = self.sample_dataset.conditions_per_plate_geometry
+        num_steps = self.sample_dataset.num_steps
+
         if progress_bar:
             self.sample_dataloader = tqdm(self.sample_dataloader, desc="Sampling")
 
@@ -725,14 +732,11 @@ class Trainer:
             total_sample_loss += loss
             num_batches += 1
 
-        total_sample_loss /= num_batches
-
-        if save:
-            num_conditions = self.sample_dataset.conditions_per_plate_geometry
-            num_steps = self.sample_dataset.num_steps
+            if not save:
+                continue
 
             if progress_bar:
-                sampled_images = tqdm(enumerate(sampled_images), desc="Saving")
+                sampled_images = tqdm(enumerate(sampled_images), desc="Saving batch")
             else:
                 sampled_images = enumerate(sampled_images)
 
@@ -752,7 +756,9 @@ class Trainer:
                     )
                 else:
                     pathname = self.results_folder / f"{plate}" / f"{condition}"
+
                 pathname.mkdir(parents=True, exist_ok=True)
+
                 plt.imsave(
                     str(pathname / f"sample_{axis}_{step}.png"),
                     torch.squeeze(image).cpu().detach().numpy(),
@@ -761,8 +767,10 @@ class Trainer:
                     vmax=255,
                 )
                 image_filenames.append(str(pathname / f"sample_{axis}_{step}.png"))
-        else:
-            image_filenames = None
+
+        total_sample_loss /= num_batches
+
+        image_filenames = None if not save else image_filenames
         return sampled_images, image_filenames, total_sample_loss
 
     def train(self, wandb_inject_function=None):
