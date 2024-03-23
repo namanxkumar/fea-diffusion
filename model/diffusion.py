@@ -3,6 +3,7 @@ from pathlib import Path
 from tqdm.autonotebook import tqdm
 
 from .fdnunet import FDNUNet
+from .fdnunetwithaux import FDNUNetWithAux
 
 import matplotlib.pyplot as plt
 
@@ -142,7 +143,7 @@ class FEADataset(Dataset):
         # PREVIOUS ITERATION IMAGE
 
         # if step_index == 1:
-        sample["previous_iteration"] = (sample["geometry"],) * 2
+        # sample["previous_iteration"] = (sample["geometry"],) * 2
         # else:
         # sample["previous_iteration"] = (
         #     self.normalize_to_negative_one_to_one(
@@ -166,7 +167,7 @@ class FEADataset(Dataset):
         #         )
         #     ),
         # )
-        sample["previous_iteration"] = torch.cat(sample["previous_iteration"], dim=0)
+        # sample["previous_iteration"] = torch.cat(sample["previous_iteration"], dim=0)
 
         # DISPLACEMENT IMAGE
 
@@ -343,11 +344,13 @@ class FEADataset(Dataset):
             )
         material_tensor = torch.zeros(sample["geometry"].shape)
         for material in materials:
-            material_tensor = torch.where(
-                material != 0, material, material_tensor
-            )
+            material_tensor = torch.where(material != 0, material, material_tensor)
         # sample["materials"] = torch.sum(torch.stack(materials, dim=0), dim=0)
         sample["materials"] = material_tensor
+
+        # TODO: Add range
+        sample["displacement_range"] = None
+
         return sample
 
 
@@ -394,8 +397,8 @@ class Trainer:
         adam_betas=(0.9, 0.99),
         max_gradient_norm: float = 1.0,
         loss_type: str = "l1",
-        ema_decay: float = 0.995,
-        ema_steps_per_milestone: int = 10,
+        # ema_decay: float = 0.995,
+        # ema_steps_per_milestone: int = 10,
         results_folder: str = "results",
         use_batch_split_over_devices: bool = True,
     ):
@@ -473,11 +476,11 @@ class Trainer:
         )
 
         # Results
-        if self.accelerator.is_main_process:
-            self.ema = EMA(
-                self.model, beta=ema_decay, update_every=ema_steps_per_milestone
-            )
-            self.ema.to(self.device)
+        # if self.accelerator.is_main_process:
+        #     self.ema = EMA(
+        #         self.model, beta=ema_decay, update_every=ema_steps_per_milestone
+        #     )
+        #     self.ema.to(self.device)
 
         self.results_folder = Path(results_folder)
         self.results_folder.mkdir(exist_ok=True)
@@ -507,7 +510,7 @@ class Trainer:
             self.model, self.optimizer, self.train_dataloader, self.sample_dataloader
         )
 
-        self.accelerator.register_for_checkpointing(self.ema)
+        # self.accelerator.register_for_checkpointing(self.ema)
         self.accelerator.register_for_checkpointing(self.step)
 
         self.skipped_dataloader = None
@@ -526,7 +529,7 @@ class Trainer:
             "step": self.step if old_step else self.step.state_dict,
             "model": self.accelerator.get_state_dict(self.model),
             "optimizer": self.optimizer.state_dict(),
-            "ema": self.ema.state_dict(),
+            # "ema": self.ema.state_dict(),
         }
 
         torch.save(checkpoint, str(self.results_folder / f"model-{milestone}.pt"))
@@ -562,8 +565,8 @@ class Trainer:
         self.step.gradient_accumulation_steps = self.num_gradient_accumulation_steps
         self.optimizer.load_state_dict(checkpoint["optimizer"])
 
-        if self.accelerator.is_main_process:
-            self.ema.load_state_dict(checkpoint["ema"])
+        # if self.accelerator.is_main_process:
+        #     self.ema.load_state_dict(checkpoint["ema"])
 
     def unzip_checkpoint(self, milestone: int):
         with ZipFile(self.results_folder / f"model-{milestone}.zip", "r") as zip:
@@ -597,13 +600,29 @@ class Trainer:
         self.step.batch_size = self.train_batch_size
 
     def calculate_losses(
-        self, sampled_iteration: Tensor, groundtruth_iteration: Tensor
+        self,
+        sampled_tensors: List[Tensor],
+        groundtruth_tensors: List[Tensor],
     ) -> Tensor:
         # return F.l1_loss(sampled_iteration, groundtruth_iteration, reduction='sum')
         if self.loss_type == "l1":
-            return F.l1_loss(sampled_iteration, groundtruth_iteration)
+            return sum(
+                [
+                    F.l1_loss(sampled_tensor, groundtruth_tensor)
+                    for sampled_tensor, groundtruth_tensor in zip(
+                        sampled_tensors, groundtruth_tensors
+                    )
+                ]
+            )
         elif self.loss_type == "l2":
-            return F.mse_loss(sampled_iteration, groundtruth_iteration)
+            return sum(
+                [
+                    F.mse_loss(sampled_tensor, groundtruth_tensor)
+                    for sampled_tensor, groundtruth_tensor in zip(
+                        sampled_tensors, groundtruth_tensors
+                    )
+                ]
+            )
         else:
             raise NotImplementedError("Only l1 and l2 loss are supported")
 
@@ -631,11 +650,7 @@ class Trainer:
     def create_view_friendly_image(self, image: Tensor) -> Tensor:
         image = image[None, ...]
         image = self.unnormalize_from_negative_one_to_one(image)
-        # image = TF.invert(image)
         image = image * 255.0
-        # image = image.repeat(3, 1, 1)
-        # image = TF.to_pil_image(image, mode='F')
-        # image = image.convert("RGB")
         return image
 
     def reverse_view_friendly_image(self, image: Tensor) -> Tensor:
@@ -645,55 +660,54 @@ class Trainer:
         return image
 
     def sample_model(
-        self, sample: Dict[str, Tensor], use_ema_model: bool = False
-    ) -> Tensor:
-        if type(self.model) == FDNUNet:
-            conditions = torch.cat((sample["forces"], sample["constraints"]), dim=1).to(
-                self.device
-            )
-        else:
-            # raise NotImplementedError('Only FDNUNet is supported')
-            conditions = torch.cat((sample["forces"], sample["constraints"]), dim=1).to(
-                self.device
-            )
-        previous_iteration = sample["previous_iteration"].to(self.device)
+        self,
+        sample: Dict[str, Tensor],
+        # use_ema_model: bool = False,
+    ) -> Tuple[Tensor, Tensor | None]:
+        conditions = torch.cat((sample["forces"], sample["constraints"]), dim=1).to(
+            self.device
+        )
+        primary_input = sample["materials"].to(self.device)
         # iteration_index = sample['iteration_index'].to(self.device)
-        if type(self.model) == FDNUNet:
-            prediction = (
-                self.model(previous_iteration, conditions)
-                if not use_ema_model
-                else self.ema.ema_model(previous_iteration, conditions)
-            )
+
+        if type(self.model) == FDNUNetWithAux:
+            image_prediction, range_prediction = self.model(primary_input, conditions)
         else:
-            # raise NotImplementedError('Only FDNUNet is supported')
-            prediction = (
-                self.model(previous_iteration, conditions)
-                if not use_ema_model
-                else self.ema.ema_model(previous_iteration, conditions)
-            )
+            image_prediction = self.model(primary_input, conditions)
+            range_prediction = None
         # sample['geometry'] = sample['geometry'].to(prediction.device)
         # sample['constraints'] = sample['constraints'].to(prediction.device)
-        prediction = self.normalize_to_negative_one_to_one(
-            self.unnormalize_from_negative_one_to_one(prediction)
+        image_prediction = self.normalize_to_negative_one_to_one(
+            self.unnormalize_from_negative_one_to_one(image_prediction)
             * self.unnormalize_from_negative_one_to_one(sample["geometry"])
         )  # Mask out the regions that are not part of the geometry
         # prediction = prediction * (1.0 - self.unnormalize_from_negative_one_to_one(sample['constraints'])) # Mask out the regions that are constrained
-        return prediction
+        return image_prediction, range_prediction
 
-    def sample(self, batch, use_ema_model: bool = False) -> Tuple[List[Tensor], Tensor]:
+    def sample(self, batch) -> Tuple[List[Tensor], Tensor]:
         with torch.inference_mode():
-            output = self.sample_model(batch, use_ema_model)
-            loss = self.calculate_losses(output, batch["displacement"])
+            image_output, range_output = self.sample_model(batch)
+            loss = self.calculate_losses(
+                (
+                    [image_output, range_output]
+                    if exists(range_output)
+                    else [image_output]
+                ),
+                (
+                    [batch["displacement"], batch["displacement_range"]]
+                    if exists(range_output)
+                    else [batch["displacement"]]
+                ),
+            )
             images = []
-            for i in range(output.shape[0]):
-                for j in range(output.shape[1]):
-                    images.append(self.create_view_friendly_image(output[i][j]))
+            for i in range(image_output.shape[0]):
+                for j in range(image_output.shape[1]):
+                    images.append(self.create_view_friendly_image(image_output[i][j]))
             return images, loss
 
     def sample_and_save(
         self,
         milestone: Union[int, str] = None,
-        use_ema_model: bool = False,
         save=True,
         progress_bar=False,
     ):
@@ -701,22 +715,27 @@ class Trainer:
         image_filenames = []
         total_sample_loss = 0.0
         num_batches = 0
+
         if progress_bar:
             self.sample_dataloader = tqdm(self.sample_dataloader, desc="Sampling")
+
         for batch in self.sample_dataloader:
-            images, loss = self.sample(batch, use_ema_model)
+            images, loss = self.sample(batch)
             sampled_images += images
             total_sample_loss += loss
             num_batches += 1
+
         total_sample_loss /= num_batches
 
         if save:
             num_conditions = self.sample_dataset.conditions_per_plate_geometry
             num_steps = self.sample_dataset.num_steps
+
             if progress_bar:
                 sampled_images = tqdm(enumerate(sampled_images), desc="Saving")
             else:
                 sampled_images = enumerate(sampled_images)
+
             for i, image in sampled_images:
                 axis = "x" if i % 2 == 0 else "y"
                 index = i // 2
@@ -767,11 +786,24 @@ class Trainer:
                 total_loss = 0.0
                 # with tqdm(initial = 0, total = self.num_gradient_accumulation_steps, disable = not self.accelerator.is_main_process, leave=False) as inner_progress_bar:
                 for _ in range(self.num_gradient_accumulation_steps):
-                    sample: dict = next(self.train_yielder)
-                    output = self.sample_model(sample)
+                    batch: dict = next(self.train_yielder)
 
-                    loss = self.calculate_losses(output, sample["displacement"])
+                    image_output, range_output = self.sample_model(batch)
+
+                    loss = self.calculate_losses(
+                        (
+                            [image_output, range_output]
+                            if exists(range_output)
+                            else [image_output]
+                        ),
+                        (
+                            [batch["displacement"], batch["displacement_range"]]
+                            if exists(range_output)
+                            else [batch["displacement"]]
+                        ),
+                    )
                     loss = loss / self.num_gradient_accumulation_steps
+
                     total_loss += loss.item()
                     # inner_progress_bar.set_description(f'current batch loss: {total_loss:.4f}')
                     self.accelerator.backward(loss)
@@ -794,7 +826,7 @@ class Trainer:
                 self.step.step += 1
 
                 if self.accelerator.is_main_process:
-                    self.ema.update()
+                    # self.ema.update()
                     total_sample_loss = None
                     image_filenames = None
                     milestone = None
@@ -803,7 +835,7 @@ class Trainer:
                         self.step.step != 0
                         and self.step.step % self.num_steps_per_milestone == 0
                     ):
-                        self.ema.ema_model.eval()
+                        # self.ema.ema_model.eval()
 
                         with torch.inference_mode():
                             milestone = self.step.step // self.num_steps_per_milestone
