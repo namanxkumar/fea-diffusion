@@ -77,7 +77,8 @@ def generate_data(
         plate_dir = os.path.join(data_dir, str(plate_index + 1))
 
         verify_directory(plate_dir)
-        while condition_index := 0 < len(conditions):
+        condition_index = 0
+        while condition_index < len(conditions):
             # print("--- CONDITION INDEX {}".format(condition_index + 1), "\n")
             condition_dir = os.path.join(plate_dir, str(condition_index + 1))
             verify_directory(condition_dir)
