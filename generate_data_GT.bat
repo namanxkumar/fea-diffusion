@@ -1,9 +1,9 @@
 python generate_data.py ^
---num_plates 100 ^
---data_dir data/sanitycheck/normaliseddisplacementfixed ^
+--num_plates 1000 ^
+--data_dir data/feadata ^
 --start_plate 1 ^
---conditions_per_plate 1 ^
---steps_per_condition 2 ^
+--conditions_per_plate 4 ^
+--steps_per_condition 6 ^
 --image_size 512 ^
 --save_meshes ^
 --save_displacement 

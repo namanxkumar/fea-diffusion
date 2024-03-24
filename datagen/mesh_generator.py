@@ -62,7 +62,7 @@ class MeshGenerator:
         holes_per_polygon_range: Tuple[int, int] = (0, 3),
         points_per_hole_range: Tuple[int, int] = (3, 4),
         num_regions: Tuple[int, int] = (1, 5),
-        force_magnitude_range: Tuple[int, int] = (500, 5000),
+        force_magnitude_range: Tuple[int, int] = (1, 1000),
         random_seed=None,
     ):
         self.num_polygons_range = num_polygons_range
