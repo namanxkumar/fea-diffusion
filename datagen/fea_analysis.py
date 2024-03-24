@@ -166,6 +166,8 @@ class FEAnalysis:
     def _append_region_value_to_file(
         self, filename: str, region_name: str, value: Tuple[float, float]
     ):
+        if filename in os.listdir(self.condition_dir):
+            os.remove(path.join(self.condition_dir, filename))
         with open(path.join(self.condition_dir, filename), "a+") as f:
             f.write("{}:{}\n".format(region_name, str(value)))
 

@@ -179,7 +179,7 @@ class FEADataset(Dataset):
                         self.path
                         / f"{plate_index}"
                         / f"{condition_index}"
-                        / f"outputs_displacement_x_1.{self.extension}"
+                        / f"outputs_displacement_x.{self.extension}"
                         # / f"outputs_displacement_x_{step_index}.{self.extension}"
                     )
                 )
@@ -190,7 +190,7 @@ class FEADataset(Dataset):
                         self.path
                         / f"{plate_index}"
                         / f"{condition_index}"
-                        / f"outputs_displacement_y_1.{self.extension}"
+                        / f"outputs_displacement_y.{self.extension}"
                         # / f"outputs_displacement_y_{step_index}.{self.extension}"
                     )
                 )
@@ -353,6 +353,7 @@ class FEADataset(Dataset):
 
         path = str(self.path / f"{plate_index}" / f"{condition_index}" / f"ranges.txt")
         line = (step_index - 1) * 2
+        line +=1
         ranges = [
             getline(
                 path,
@@ -360,6 +361,7 @@ class FEADataset(Dataset):
             )
             for step in [line, line + 1]
         ]
+        print(ranges)
         ranges = list(map(lambda x: list(eval(tuple(x.strip().split(":"))[1])), ranges))
         # combine list of lists into a single list
         ranges = [item for sublist in ranges for item in sublist]
@@ -682,7 +684,7 @@ class Trainer:
         self,
         sample: Dict[str, Tensor],
         # use_ema_model: bool = False,
-    ) -> Tuple[Tensor, Tensor | None]:
+    ) -> Tuple[Tensor, Optional[Tensor]]:
         conditions = torch.cat((sample["forces"], sample["constraints"]), dim=1).to(
             self.device
         )
@@ -719,10 +721,12 @@ class Trainer:
                 ),
             )
             images = []
+            ranges = []
             for i in range(image_output.shape[0]):
-                for j in range(image_output.shape[1]):
+                ranges.append(range_output[i])
+                for j in range(image_output.shape[1]): 
                     images.append(self.create_view_friendly_image(image_output[i][j]))
-            return images, loss
+            return images, ranges, loss
 
     def sample_and_save(
         self,
@@ -742,7 +746,7 @@ class Trainer:
             self.sample_dataloader = tqdm(self.sample_dataloader, desc="Sampling")
 
         for batch in self.sample_dataloader:
-            images, loss = self.sample(batch)
+            images, ranges, loss = self.sample(batch)
             sampled_images += images
             total_sample_loss += loss
             num_batches += 1
@@ -780,6 +784,10 @@ class Trainer:
                     cmap="Greys",
                     vmin=0,
                     vmax=255,
+                )
+                np.savetext(
+                    str(pathname/ f"sample_{axis}_{step}.txt"),
+                    ranges[i],
                 )
                 image_filenames.append(str(pathname / f"sample_{axis}_{step}.png"))
 
