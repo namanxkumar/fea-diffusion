@@ -874,7 +874,7 @@ class Trainer:
                                 _,
                                 image_filenames,
                                 total_sample_loss,
-                            ) = self.sample_and_save(use_ema_model=False)
+                            ) = self.sample_and_save()
                             logging.info(f"sample loss: {total_sample_loss:.4f}")
                         self.save_checkpoint(milestone)
                     elif (
@@ -882,9 +882,7 @@ class Trainer:
                         and self.step.step % self.num_steps_per_soft_milestone == 0
                     ):
                         with torch.inference_mode():
-                            _, _, total_sample_loss = self.sample_and_save(
-                                use_ema_model=False
-                            )
+                            _, _, total_sample_loss = self.sample_and_save()
                             logging.info(f"sample loss: {total_sample_loss:.4f}")
 
                     if exists(wandb_inject_function):
