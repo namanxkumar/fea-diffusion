@@ -555,23 +555,19 @@ class FEAnalysis:
                 save = True
 
             for type, config in output_file_config.items():
-                name = "{}_{}".format(type, step)
-                filepath = "{}_{}.png".format(
-                    filepathroot, name
-                )
-                scalar_bar_range_path = path.join(self.condition_dir, "ranges.txt")
+
                 # system("sfepy-view domain.??.vtk -f {} -s {} {} -o {}".format(config, step, self.common_config, filename))
 
                 # these values are found by trial and error and correspond to the current force magnitude range (max 5000N), need updating if force magnitude range changes
-                if type == "displacement_x" or type == "displacement_y":
-                    scalar_bar_range = [-0.05, 0.05]
-                elif type == "stress_x" or type == "stress_y":
-                    scalar_bar_range = [
-                        -5e5,
-                        5e5,
-                    ]  # along x axis: [-17e5, 6.55e5], along y axis: [-3.66e5, 7.86e5]
-                elif type == "strain_x" or type == "strain_y":
-                    scalar_bar_range = [-10, 10]
+                # if type == "displacement_x" or type == "displacement_y":
+                #     scalar_bar_range = [-0.05, 0.05]
+                # elif type == "stress_x" or type == "stress_y":
+                #     scalar_bar_range = [
+                #         -5e5,
+                #         5e5,
+                #     ]  # along x axis: [-17e5, 6.55e5], along y axis: [-3.66e5, 7.86e5]
+                # elif type == "strain_x" or type == "strain_y":
+                #     scalar_bar_range = [-10, 10]
 
                 if self.save_meshes:
                     directory = self.condition_dir
@@ -584,18 +580,23 @@ class FEAnalysis:
                     domainfilename = "domain.{:0>2}.vtk"
 
                 # plot(filenames=["domain.{:0>2}.vtk".format(s) for s in range(self.num_steps)], fields=config, step=step, window_size=(self.image_size, self.image_size), screenshot=filepath, show_scalar_bars=True)
+                filepath = (
+                    "{}_{}_{}.png".format(filepathroot, type, step)
+                    if not save_only_first
+                    else "{}_{}.png".format(filepathroot, type)
+                )
                 plot(
                     filenames=[
                         path.join(directory, domainfilename.format(s))
-                        for s in range(self.num_steps)
+                        for s in range(1, self.num_steps)
                     ],
                     fields=config,
-                    step=step,
+                    step=step - 1,
                     window_size=(self.image_size, self.image_size),
                     screenshot=filepath if save else None,
                     # scalar_bar_range=scalar_bar_range,
-                    save_scalar_bar_range=scalar_bar_range_path,
-                    name=name,
+                    save_scalar_bar_range=path.join(self.condition_dir, "ranges.txt"),
+                    name="{}_{}".format(type, step),
                 )
 
                 if crop and save:
