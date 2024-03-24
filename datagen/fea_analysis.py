@@ -447,8 +447,14 @@ class FEAnalysis:
         #             path.join(self.data_dir, "domain.{:0>2}.vtk".format(step)),
         #             path.join(self.condition_dir, "domain.{:0>2}.vtk".format(step)),
         #         )
-        # print(np.array(variables.create_output()['u'].data).shape)
         # print(variables.get_state_parts())
+        data = np.array(variables.create_output()['u'].data)
+
+        # check if data contains nans
+        if np.isnan(data).any():
+            return False
+        else:
+            return True
 
     def update_image_size_or_bounds(self, image_size=None, bounds=None):
         if image_size is not None:

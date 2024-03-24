@@ -77,7 +77,7 @@ def generate_data(
         plate_dir = os.path.join(data_dir, str(plate_index + 1))
 
         verify_directory(plate_dir)
-        for condition_index in range(len(conditions)):
+        while condition_index := 0 < len(conditions):
             # print("--- CONDITION INDEX {}".format(condition_index + 1), "\n")
             condition_dir = os.path.join(plate_dir, str(condition_index + 1))
             verify_directory(condition_dir)
@@ -104,8 +104,21 @@ def generate_data(
             )
 
             start = timer()
-            analyzer.calculate()
+            success = analyzer.calculate()
             end = timer()
+            if not success:
+                print(
+                    "Failed to calculate for plate {} condition {}".format(
+                        plate_index + 1, condition_index + 1
+                    )
+                )
+                print("Regenerating condition")
+                new_condition = generator.sample_conditions(
+                    polygons_ptags, polygons_ltag_ptags, num_conditions=1
+                )[0]
+                conditions[condition_index] = new_condition
+                continue
+
             print("TIME:", end - start)
             total_time += end - start
 
@@ -138,6 +151,7 @@ def generate_data(
                 save_strain=save_strain,
                 save_stress=save_stress,
             )
+            condition_index += 1
 
         plate_index += 1
         plate_progress_bar.update(1)
