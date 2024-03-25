@@ -353,7 +353,7 @@ class FEADataset(Dataset):
 
         path = str(self.path / f"{plate_index}" / f"{condition_index}" / f"ranges.txt")
         line = (step_index - 1) * 2
-        line +=1
+        line += 1
         ranges = [
             getline(
                 path,
@@ -705,7 +705,7 @@ class Trainer:
         # prediction = prediction * (1.0 - self.unnormalize_from_negative_one_to_one(sample['constraints'])) # Mask out the regions that are constrained
         return image_prediction, range_prediction
 
-    def sample(self, batch) -> Tuple[List[Tensor], Tensor]:
+    def sample(self, batch) -> Tuple[List[Tensor], Optional[List[Tensor]], Tensor]:
         with torch.inference_mode():
             image_output, range_output = self.sample_model(batch)
             loss = self.calculate_losses(
@@ -722,20 +722,26 @@ class Trainer:
             )
             images = []
             ranges = []
-            for i in range(image_output.shape[0]):
-                ranges.append(range_output[i])
-                for j in range(image_output.shape[1]): 
-                    images.append(self.create_view_friendly_image(image_output[i][j]))
-            return images, ranges, loss
+            for batch_index in range(image_output.shape[0]):
+                if exists(range_output):
+                    ranges.append(range_output[batch_index])
+
+                for channel_index in range(image_output.shape[1]):
+                    images.append(
+                        self.create_view_friendly_image(
+                            image_output[batch_index][channel_index]
+                        )
+                    )
+            return images, ranges if len(ranges) > 0 else None, loss
 
     def sample_and_save(
         self,
         milestone: Union[int, str] = None,
         save=True,
         progress_bar=False,
-    ):
-        sampled_images = []
+    ) -> Tuple[List[str], Optional[List[Tensor]], float]:
         image_filenames = []
+        all_ranges = []
         total_sample_loss = 0.0
         num_batches = 0
 
@@ -743,25 +749,39 @@ class Trainer:
         num_steps = self.sample_dataset.num_steps
 
         if progress_bar:
-            self.sample_dataloader = tqdm(self.sample_dataloader, desc="Sampling")
+            self.sample_dataloader = tqdm(
+                enumerate(self.sample_dataloader), desc="Sampling"
+            )
+        else:
+            self.sample_dataloader = enumerate(self.sample_dataloader)
 
-        for batch in self.sample_dataloader:
+        for batch_index, batch in self.sample_dataloader:
             images, ranges, loss = self.sample(batch)
-            sampled_images += images
+
+            if ranges is not None:
+                all_ranges.append(ranges)
+
             total_sample_loss += loss
             num_batches += 1
 
             if not save:
                 continue
 
-            if progress_bar:
-                sampled_images = tqdm(enumerate(sampled_images), desc="Saving batch")
-            else:
-                sampled_images = enumerate(sampled_images)
+            batch_outputs = (
+                enumerate(zip(images, ranges)) if exists(ranges) else enumerate(images)
+            )
 
-            for i, image in sampled_images:
-                axis = "x" if i % 2 == 0 else "y"
-                index = i // 2
+            if progress_bar:
+                batch_outputs = tqdm(batch_outputs, desc="Saving batch")
+
+            for batch_output_index, output in batch_outputs:
+                if exists(ranges):
+                    image, range = output
+                else:
+                    image = output
+                    range = None
+                axis = "x" if batch_output_index % 2 == 0 else "y"
+                index = batch_output_index // 2 + batch_index * self.sample_batch_size
                 plate = (index // (num_conditions * num_steps)) + 1
                 condition = (index % (num_conditions * num_steps)) // num_steps + 1
                 step = (index % (num_conditions * num_steps)) % num_steps + 1
@@ -785,16 +805,22 @@ class Trainer:
                     vmin=0,
                     vmax=255,
                 )
-                np.savetext(
-                    str(pathname/ f"sample_{axis}_{step}.txt"),
-                    ranges[i],
-                )
                 image_filenames.append(str(pathname / f"sample_{axis}_{step}.png"))
+
+                if exists(range):
+                    np.savetxt(
+                        str(pathname / f"sample_{axis}_{step}.txt"),
+                        range,
+                    )
 
         total_sample_loss /= num_batches
 
         image_filenames = None if not save else image_filenames
-        return sampled_images, image_filenames, total_sample_loss
+        return (
+            image_filenames,
+            all_ranges if len(all_ranges) > 0 else None,
+            total_sample_loss,
+        )
 
     def train(self, wandb_inject_function=None):
         print(
@@ -860,6 +886,7 @@ class Trainer:
                     # self.ema.update()
                     total_sample_loss = None
                     image_filenames = None
+                    ranges = None
                     milestone = None
 
                     if (
@@ -870,11 +897,9 @@ class Trainer:
 
                         with torch.inference_mode():
                             milestone = self.step.step // self.num_steps_per_milestone
-                            (
-                                _,
-                                image_filenames,
-                                total_sample_loss,
-                            ) = self.sample_and_save()
+                            image_filenames, ranges, total_sample_loss = (
+                                self.sample_and_save()
+                            )
                             logging.info(f"sample loss: {total_sample_loss:.4f}")
                         self.save_checkpoint(milestone)
                     elif (
@@ -891,6 +916,7 @@ class Trainer:
                             total_loss,
                             total_sample_loss,
                             image_filenames,
+                            ranges,
                             milestone,
                         )
 

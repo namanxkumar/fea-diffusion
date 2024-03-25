@@ -2,6 +2,10 @@ from model.diffusion import Trainer
 from model.unet import UNet
 from model.fdnunet import FDNUNet
 
+from typing import Optional, List
+
+from torch import Tensor
+
 import os
 
 import argparse
@@ -38,9 +42,9 @@ parser.add_argument(
     default=500,
     help="Number of steps per milestone.",
 )
-parser.add_argument(
-    "--ema_steps_per_milestone", type=int, default=10, help="EMA steps per milestone."
-)
+# parser.add_argument(
+#     "--ema_steps_per_milestone", type=int, default=10, help="EMA steps per milestone."
+# )
 parser.add_argument("--learning_rate", type=float, default=3e-4, help="Learning rate.")
 parser.add_argument("--loss_type", type=str, default="l1", help="Loss type.")
 parser.add_argument(
@@ -51,45 +55,50 @@ parser.add_argument(
 )
 parser.add_argument("--use_wandb", action="store_true", help="Use wandb.")
 parser.add_argument("--wandb_project", type=str, help="Wandb project name.")
-parser.add_argument("--wandb_restrict_cache", type=int, default=10, help="Restrict wandb cache.")
+parser.add_argument(
+    "--wandb_restrict_cache", type=int, default=10, help="Restrict wandb cache."
+)
 
 args = parser.parse_args()
 
 if args.use_wandb:
     import wandb
+
     assert args.wandb_project is not None, "Must specify wandb project name."
     run = wandb.init(
-    # set the wandb project where this run will be logged
+        # set the wandb project where this run will be logged
         project=args.wandb_project,
     )
     wandb.define_metric("step")
     wandb.define_metric("train_loss", step_metric="step")
     wandb.define_metric("sample_loss", step_metric="step")
 
-def inject_function(step, loss, sample_loss, image_filenames, milestone):
-    if (
-        sample_loss is not None
-        and image_filenames is not None
-        and milestone is not None
-    ):
+
+def inject_function(
+    step: int,
+    loss: float,
+    sample_loss: Optional[float],
+    image_filenames: Optional[List[str]],
+    ranges: Optional[Tensor],
+    milestone: Optional[int],
+):
+    log_dict = {
+        "step": step,
+        "train_loss": loss,
+    }
+    if sample_loss is not None:
+        log_dict["sample_loss"] = sample_loss
+    if image_filenames is not None:
+        log_dict["samples"] = [wandb.Image(image) for image in image_filenames]
+    if ranges is not None:
+        log_dict["ranges"] = ranges
+    wandb.log(log_dict)
+
+    if milestone is not None:
         if args.wandb_restrict_cache is not None:
             os.system(f"wandb artifact cache cleanup {args.wandb_restrict_cache}")
-
         artifact = wandb.Artifact(name=f"checkpoint-{wandb.run.id}", type="model")
-        wandb.log(
-            {
-                "step": step,
-                "train_loss": loss,
-                "sample_loss": sample_loss,
-                "samples": [wandb.Image(image) for image in image_filenames],
-            }
-        )
         artifact.add_file(Path(args.results_dir) / f"model-{milestone}.zip")
-        wandb.log_artifact(artifact)
-    elif sample_loss is not None:
-        wandb.log({"step": step, "train_loss": loss, "sample_loss": sample_loss})
-    else:
-        wandb.log({"step": step, "train_loss": loss})
 
 
 # model = UNet(
@@ -117,7 +126,7 @@ trainer = Trainer(
     train_learning_rate=args.learning_rate,
     num_train_steps=args.num_steps,
     num_steps_per_milestone=args.num_steps_per_milestone,
-    ema_steps_per_milestone=args.ema_steps_per_milestone,
+    # ema_steps_per_milestone=args.ema_steps_per_milestone,
     loss_type=args.loss_type,
     results_folder=args.results_dir,
 )
