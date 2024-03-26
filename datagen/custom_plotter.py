@@ -84,6 +84,8 @@ def plot(
     off_screen=True,
     view_2d=True,
     scalar_bar_range=None,
+    save_scalar_bar_range=None,
+    name=None,
 ):
     options = Namespace(
         filenames=filenames,
@@ -175,6 +177,15 @@ def plot(
             plotter.update_scalar_bar_range(scalar_bar_range)
 
         plotter.show(screenshot=options.screenshot, window_size=options.window_size)
+
+        if save_scalar_bar_range is not None:
+            assert name is not None, "name is required to save scalar bar range"
+            clim = (
+                list(plotter.renderer.actors.values())[0].GetMapper().GetScalarRange()
+            )
+            # Save to file
+            with open(save_scalar_bar_range, "a+") as f:
+                f.write("{}:{}\n".format(name, str(clim)))
 
         if options.screenshot is not None and os.path.exists(options.screenshot):
             print(f"saved: {options.screenshot}")

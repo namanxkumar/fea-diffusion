@@ -1,8 +1,8 @@
 from pathlib import Path
 
 from tqdm.autonotebook import tqdm
-
 from .fdnunet import FDNUNet
+from .fdnunetwithaux import FDNUNetWithAux
 
 import matplotlib.pyplot as plt
 
@@ -28,6 +28,8 @@ import logging
 from datetime import datetime
 
 from typing import Optional, Dict, Tuple, List, Union
+
+from linecache import getline
 
 # In regular diffusion implementations, a groundtruth image is provided from the dataset, a random timestep is generated for each forward pass,
 # the corresponding amount of noise is added to the groundtruth image to degrade it, and the predicted image is sampled from the model.
@@ -142,7 +144,7 @@ class FEADataset(Dataset):
         # PREVIOUS ITERATION IMAGE
 
         # if step_index == 1:
-        sample["previous_iteration"] = (sample["geometry"],) * 2
+        # sample["previous_iteration"] = (sample["geometry"],) * 2
         # else:
         # sample["previous_iteration"] = (
         #     self.normalize_to_negative_one_to_one(
@@ -166,7 +168,7 @@ class FEADataset(Dataset):
         #         )
         #     ),
         # )
-        sample["previous_iteration"] = torch.cat(sample["previous_iteration"], dim=0)
+        # sample["previous_iteration"] = torch.cat(sample["previous_iteration"], dim=0)
 
         # DISPLACEMENT IMAGE
 
@@ -177,7 +179,8 @@ class FEADataset(Dataset):
                         self.path
                         / f"{plate_index}"
                         / f"{condition_index}"
-                        / f"outputs_displacement_x_{step_index}.{self.extension}"
+                        / f"outputs_displacement_x.{self.extension}"
+                        # / f"outputs_displacement_x_{step_index}.{self.extension}"
                     )
                 )
             ),
@@ -187,7 +190,8 @@ class FEADataset(Dataset):
                         self.path
                         / f"{plate_index}"
                         / f"{condition_index}"
-                        / f"outputs_displacement_y_{step_index}.{self.extension}"
+                        / f"outputs_displacement_y.{self.extension}"
+                        # / f"outputs_displacement_y_{step_index}.{self.extension}"
                     )
                 )
             ),
@@ -343,11 +347,29 @@ class FEADataset(Dataset):
             )
         material_tensor = torch.zeros(sample["geometry"].shape)
         for material in materials:
-            material_tensor = torch.where(
-                material != 0, material, material_tensor
-            )
+            material_tensor = torch.where(material != 0, material, material_tensor)
         # sample["materials"] = torch.sum(torch.stack(materials, dim=0), dim=0)
         sample["materials"] = material_tensor
+
+        path = str(self.path / f"{plate_index}" / f"{condition_index}" / f"ranges.txt")
+        with open(
+            self.path / f"{plate_index}" / f"{condition_index}" / f"ranges.txt", "r"
+        ) as f:
+            all_ranges = list(map(lambda x: tuple(x.strip().split(":")), f.readlines()))
+
+        line = (step_index - 1) * 2
+
+        ranges = []
+
+        for index in [line, line + 1]:
+            ranges += list(eval(all_ranges[index][1]))
+
+        sample["displacement_range"] = torch.tensor(ranges, dtype=torch.float32)
+        sample["log_displacement_range"] = torch.log(
+            1 + torch.abs(sample["displacement_range"])
+        )
+        sample["sign_displacement_range"] = (sample["displacement_range"] >= 0).int()
+
         return sample
 
 
@@ -394,8 +416,8 @@ class Trainer:
         adam_betas=(0.9, 0.99),
         max_gradient_norm: float = 1.0,
         loss_type: str = "l1",
-        ema_decay: float = 0.995,
-        ema_steps_per_milestone: int = 10,
+        # ema_decay: float = 0.995,
+        # ema_steps_per_milestone: int = 10,
         results_folder: str = "results",
         use_batch_split_over_devices: bool = True,
     ):
@@ -448,9 +470,9 @@ class Trainer:
         )
         self.num_samples = len(self.sample_dataset)
 
-        assert (
-            len(self.dataset) >= 100
-        ), "you should have at least 100 samples in your folder. at least 10k images recommended"
+        # assert (
+        #     len(self.dataset) >= 100
+        # ), "you should have at least 100 samples in your folder. at least 10k images recommended"
 
         self.train_dataloader = DataLoader(
             self.dataset,
@@ -473,11 +495,11 @@ class Trainer:
         )
 
         # Results
-        if self.accelerator.is_main_process:
-            self.ema = EMA(
-                self.model, beta=ema_decay, update_every=ema_steps_per_milestone
-            )
-            self.ema.to(self.device)
+        # if self.accelerator.is_main_process:
+        #     self.ema = EMA(
+        #         self.model, beta=ema_decay, update_every=ema_steps_per_milestone
+        #     )
+        #     self.ema.to(self.device)
 
         self.results_folder = Path(results_folder)
         self.results_folder.mkdir(exist_ok=True)
@@ -507,7 +529,7 @@ class Trainer:
             self.model, self.optimizer, self.train_dataloader, self.sample_dataloader
         )
 
-        self.accelerator.register_for_checkpointing(self.ema)
+        # self.accelerator.register_for_checkpointing(self.ema)
         self.accelerator.register_for_checkpointing(self.step)
 
         self.skipped_dataloader = None
@@ -526,12 +548,17 @@ class Trainer:
             "step": self.step if old_step else self.step.state_dict,
             "model": self.accelerator.get_state_dict(self.model),
             "optimizer": self.optimizer.state_dict(),
-            "ema": self.ema.state_dict(),
+            # "ema": self.ema.state_dict(),
         }
 
         torch.save(checkpoint, str(self.results_folder / f"model-{milestone}.pt"))
 
     def save_checkpoint(self, milestone):
+        if not self.accelerator.is_local_main_process:
+            return
+
+        self.delete_checkpoint_if_exists(milestone)
+
         self.accelerator.save_state(self.results_folder / f"model-{milestone}")
 
         with ZipFile(self.results_folder / f"model-{milestone}.zip", "w") as zip:
@@ -543,6 +570,20 @@ class Trainer:
         for file in path.iterdir():
             file.unlink()
         path.rmdir()
+
+    def delete_checkpoint_if_exists(self, milestone):
+        if not self.accelerator.is_local_main_process:
+            return
+
+        path = self.results_folder / f"model-{milestone}"
+        if path.exists():
+            for file in path.iterdir():
+                file.unlink()
+            path.rmdir()
+
+        path = self.results_folder / f"model-{milestone}.zip"
+        if path.exists():
+            path.unlink()
 
     def old_load_checkpoint(self, milestone: int, old_step=True):
         accelerator = self.accelerator
@@ -562,8 +603,8 @@ class Trainer:
         self.step.gradient_accumulation_steps = self.num_gradient_accumulation_steps
         self.optimizer.load_state_dict(checkpoint["optimizer"])
 
-        if self.accelerator.is_main_process:
-            self.ema.load_state_dict(checkpoint["ema"])
+        # if self.accelerator.is_main_process:
+        #     self.ema.load_state_dict(checkpoint["ema"])
 
     def unzip_checkpoint(self, milestone: int):
         with ZipFile(self.results_folder / f"model-{milestone}.zip", "r") as zip:
@@ -597,13 +638,33 @@ class Trainer:
         self.step.batch_size = self.train_batch_size
 
     def calculate_losses(
-        self, sampled_iteration: Tensor, groundtruth_iteration: Tensor
+        self,
+        sampled_tensors: List[Tensor],
+        groundtruth_tensors: List[Tensor],
     ) -> Tensor:
         # return F.l1_loss(sampled_iteration, groundtruth_iteration, reduction='sum')
         if self.loss_type == "l1":
-            return F.l1_loss(sampled_iteration, groundtruth_iteration)
+            return torch.sum(
+                torch.stack(
+                    [
+                        F.l1_loss(sampled_tensor, groundtruth_tensor)
+                        for sampled_tensor, groundtruth_tensor in zip(
+                            sampled_tensors, groundtruth_tensors
+                        )
+                    ]
+                )
+            )
         elif self.loss_type == "l2":
-            return F.mse_loss(sampled_iteration, groundtruth_iteration)
+            return torch.sum(
+                torch.stack(
+                    [
+                        F.mse_loss(sampled_tensor, torch.log(groundtruth_tensor))
+                        for sampled_tensor, groundtruth_tensor in zip(
+                            sampled_tensors, groundtruth_tensors
+                        )
+                    ]
+                )
+            )
         else:
             raise NotImplementedError("Only l1 and l2 loss are supported")
 
@@ -631,11 +692,7 @@ class Trainer:
     def create_view_friendly_image(self, image: Tensor) -> Tensor:
         image = image[None, ...]
         image = self.unnormalize_from_negative_one_to_one(image)
-        # image = TF.invert(image)
         image = image * 255.0
-        # image = image.repeat(3, 1, 1)
-        # image = TF.to_pil_image(image, mode='F')
-        # image = image.convert("RGB")
         return image
 
     def reverse_view_friendly_image(self, image: Tensor) -> Tensor:
@@ -645,81 +702,125 @@ class Trainer:
         return image
 
     def sample_model(
-        self, sample: Dict[str, Tensor], use_ema_model: bool = False
-    ) -> Tensor:
-        if type(self.model) == FDNUNet:
-            conditions = torch.cat((sample["forces"], sample["constraints"]), dim=1).to(
-                self.device
-            )
-        else:
-            # raise NotImplementedError('Only FDNUNet is supported')
-            conditions = torch.cat((sample["forces"], sample["constraints"]), dim=1).to(
-                self.device
-            )
-        previous_iteration = sample["previous_iteration"].to(self.device)
+        self,
+        sample: Dict[str, Tensor],
+        # use_ema_model: bool = False,
+    ) -> Tuple[Tensor, Optional[Tuple[Tensor, Tensor]]]:
+        conditions = torch.cat((sample["forces"], sample["constraints"]), dim=1).to(
+            self.device
+        )
+        primary_input = sample["materials"].to(self.device)
         # iteration_index = sample['iteration_index'].to(self.device)
-        if type(self.model) == FDNUNet:
-            prediction = (
-                self.model(previous_iteration, conditions)
-                if not use_ema_model
-                else self.ema.ema_model(previous_iteration, conditions)
-            )
+
+        if type(self.model) == FDNUNetWithAux:
+            image_prediction, range_prediction = self.model(primary_input, conditions)
         else:
-            # raise NotImplementedError('Only FDNUNet is supported')
-            prediction = (
-                self.model(previous_iteration, conditions)
-                if not use_ema_model
-                else self.ema.ema_model(previous_iteration, conditions)
-            )
+            image_prediction = self.model(primary_input, conditions)
+            range_prediction = None
         # sample['geometry'] = sample['geometry'].to(prediction.device)
         # sample['constraints'] = sample['constraints'].to(prediction.device)
-        prediction = self.normalize_to_negative_one_to_one(
-            self.unnormalize_from_negative_one_to_one(prediction)
-            * self.unnormalize_from_negative_one_to_one(sample["geometry"])
+        image_prediction = self.normalize_to_negative_one_to_one(
+            self.unnormalize_from_negative_one_to_one(image_prediction)
+            * self.unnormalize_from_negative_one_to_one(sample["geometry"]),
         )  # Mask out the regions that are not part of the geometry
         # prediction = prediction * (1.0 - self.unnormalize_from_negative_one_to_one(sample['constraints'])) # Mask out the regions that are constrained
-        return prediction
+        return image_prediction, range_prediction
 
-    def sample(self, batch, use_ema_model: bool = False) -> Tuple[List[Tensor], Tensor]:
+    def create_view_friendly_range(
+        self, sign_range_output: Tensor, log_range_output: Tensor
+    ) -> Tensor:
+        sign = (sign_range_output < 0.5).int() * 2 - 1
+        return sign * (torch.exp(log_range_output) - 1)
+
+    def sample(self, batch) -> Tuple[List[Tensor], Optional[List[Tensor]], Tensor]:
         with torch.inference_mode():
-            output = self.sample_model(batch, use_ema_model)
-            loss = self.calculate_losses(output, batch["displacement"])
+            image_output, range_output = self.sample_model(batch)
+
+            loss = self.calculate_losses(
+                (
+                    [image_output, *range_output]
+                    if exists(range_output)
+                    else [image_output]
+                ),
+                (
+                    [
+                        batch["displacement"],
+                        batch["sign_displacement_range"],
+                        batch["log_displacement_range"],
+                    ]
+                    if exists(range_output)
+                    else [batch["displacement"]]
+                ),
+            )
             images = []
-            for i in range(output.shape[0]):
-                for j in range(output.shape[1]):
-                    images.append(self.create_view_friendly_image(output[i][j]))
-            return images, loss
+            ranges = []
+            for batch_index in range(image_output.shape[0]):
+                if exists(range_output):
+                    ranges.append(
+                        self.create_view_friendly_range(
+                            *(
+                                range[batch_index].clone().detach()
+                                for range in range_output
+                            )
+                        )
+                    )
+
+                for channel_index in range(image_output.shape[1]):
+                    images.append(
+                        self.create_view_friendly_image(
+                            image_output[batch_index][channel_index]
+                        )
+                    )
+            return images, ranges if len(ranges) > 0 else None, loss
 
     def sample_and_save(
         self,
         milestone: Union[int, str] = None,
-        use_ema_model: bool = False,
         save=True,
         progress_bar=False,
-    ):
-        sampled_images = []
+    ) -> Tuple[List[str], Optional[List[Tensor]], float]:
         image_filenames = []
+        all_ranges = []
         total_sample_loss = 0.0
         num_batches = 0
+
+        num_conditions = self.sample_dataset.conditions_per_plate_geometry
+        num_steps = self.sample_dataset.num_steps
+
         if progress_bar:
-            self.sample_dataloader = tqdm(self.sample_dataloader, desc="Sampling")
-        for batch in self.sample_dataloader:
-            images, loss = self.sample(batch, use_ema_model)
-            sampled_images += images
+            self.sample_dataloader = tqdm(
+                enumerate(self.sample_dataloader), desc="Sampling"
+            )
+        else:
+            self.sample_dataloader = enumerate(self.sample_dataloader)
+
+        for batch_index, batch in self.sample_dataloader:
+            images, ranges, loss = self.sample(batch)
+
+            if ranges is not None:
+                all_ranges.append(ranges)
+
             total_sample_loss += loss
             num_batches += 1
-        total_sample_loss /= num_batches
 
-        if save:
-            num_conditions = self.sample_dataset.conditions_per_plate_geometry
-            num_steps = self.sample_dataset.num_steps
+            if not save:
+                continue
+
+            batch_outputs = (
+                enumerate(zip(images, ranges)) if exists(ranges) else enumerate(images)
+            )
+
             if progress_bar:
-                sampled_images = tqdm(enumerate(sampled_images), desc="Saving")
-            else:
-                sampled_images = enumerate(sampled_images)
-            for i, image in sampled_images:
-                axis = "x" if i % 2 == 0 else "y"
-                index = i // 2
+                batch_outputs = tqdm(batch_outputs, desc="Saving batch")
+
+            for batch_output_index, output in batch_outputs:
+                if exists(ranges):
+                    image, range = output
+                else:
+                    image = output
+                    range = None
+                axis = "x" if batch_output_index % 2 == 0 else "y"
+                index = batch_output_index // 2 + batch_index * self.sample_batch_size
                 plate = (index // (num_conditions * num_steps)) + 1
                 condition = (index % (num_conditions * num_steps)) // num_steps + 1
                 step = (index % (num_conditions * num_steps)) % num_steps + 1
@@ -733,18 +834,32 @@ class Trainer:
                     )
                 else:
                     pathname = self.results_folder / f"{plate}" / f"{condition}"
+
                 pathname.mkdir(parents=True, exist_ok=True)
+
                 plt.imsave(
                     str(pathname / f"sample_{axis}_{step}.png"),
-                    torch.squeeze(image).cpu().detach().numpy(),
+                    torch.squeeze(image).clone().detach().cpu().numpy(),
                     cmap="Greys",
                     vmin=0,
                     vmax=255,
                 )
                 image_filenames.append(str(pathname / f"sample_{axis}_{step}.png"))
-        else:
-            image_filenames = None
-        return sampled_images, image_filenames, total_sample_loss
+
+                if exists(range):
+                    np.savetxt(
+                        str(pathname / f"sample_{axis}_{step}.txt"),
+                        range.clone().detach().cpu().numpy(),
+                    )
+
+        total_sample_loss /= num_batches
+
+        image_filenames = None if not save else image_filenames
+        return (
+            image_filenames,
+            all_ranges if len(all_ranges) > 0 else None,
+            total_sample_loss,
+        )
 
     def train(self, wandb_inject_function=None):
         print(
@@ -763,15 +878,32 @@ class Trainer:
             total=self.num_train_steps,
             disable=not self.accelerator.is_main_process,
         ) as progress_bar:
+            lowest_sample_loss = float("inf")
             while self.step.step < self.num_train_steps:
                 total_loss = 0.0
                 # with tqdm(initial = 0, total = self.num_gradient_accumulation_steps, disable = not self.accelerator.is_main_process, leave=False) as inner_progress_bar:
                 for _ in range(self.num_gradient_accumulation_steps):
-                    sample: dict = next(self.train_yielder)
-                    output = self.sample_model(sample)
+                    batch: dict = next(self.train_yielder)
 
-                    loss = self.calculate_losses(output, sample["displacement"])
+                    image_output, range_output = self.sample_model(batch)
+                    loss = self.calculate_losses(
+                        (
+                            [image_output, *range_output]
+                            if exists(range_output)
+                            else [image_output]
+                        ),
+                        (
+                            [
+                                batch["displacement"],
+                                batch["sign_displacement_range"],
+                                batch["log_displacement_range"],
+                            ]
+                            if exists(range_output)
+                            else [batch["displacement"]]
+                        ),
+                    )
                     loss = loss / self.num_gradient_accumulation_steps
+
                     total_loss += loss.item()
                     # inner_progress_bar.set_description(f'current batch loss: {total_loss:.4f}')
                     self.accelerator.backward(loss)
@@ -794,34 +926,36 @@ class Trainer:
                 self.step.step += 1
 
                 if self.accelerator.is_main_process:
-                    self.ema.update()
+                    # self.ema.update()
                     total_sample_loss = None
                     image_filenames = None
+                    ranges = None
                     milestone = None
 
                     if (
                         self.step.step != 0
                         and self.step.step % self.num_steps_per_milestone == 0
                     ):
-                        self.ema.ema_model.eval()
+                        # self.ema.ema_model.eval()
 
                         with torch.inference_mode():
                             milestone = self.step.step // self.num_steps_per_milestone
-                            (
-                                _,
-                                image_filenames,
-                                total_sample_loss,
-                            ) = self.sample_and_save(use_ema_model=False)
+                            image_filenames, ranges, total_sample_loss = (
+                                self.sample_and_save()
+                            )
                             logging.info(f"sample loss: {total_sample_loss:.4f}")
-                        self.save_checkpoint(milestone)
+
+                        if total_sample_loss < lowest_sample_loss:
+                            lowest_sample_loss = total_sample_loss
+                            self.save_checkpoint("best")
+                        else:
+                            self.save_checkpoint("latest")
                     elif (
                         self.step.step != 0
                         and self.step.step % self.num_steps_per_soft_milestone == 0
                     ):
                         with torch.inference_mode():
-                            _, _, total_sample_loss = self.sample_and_save(
-                                use_ema_model=False
-                            )
+                            _, _, total_sample_loss = self.sample_and_save()
                             logging.info(f"sample loss: {total_sample_loss:.4f}")
 
                     if exists(wandb_inject_function):
@@ -830,6 +964,7 @@ class Trainer:
                             total_loss,
                             total_sample_loss,
                             image_filenames,
+                            ranges,
                             milestone,
                         )
 

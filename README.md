@@ -3,6 +3,8 @@
 ![Data Synthesis Pipeline](readme_images/DataSynthesis.png)
 ## Model Architecture
 ![Model Architecture](readme_images/ModelArchitecture.png)
+## New Model Architecture
+![New Model Architecture](readme_images/ModelArchitecture2.png)
 
 ## Abstract
 Finite Element Analysis (FEA) is a widely used tool in the industry for testing and verifying component designs. However, it can be challenging to use, especially for complex geometries, and requires significant resources. Recently, Image Generation models, such as diffusion networks, have shown promise in generating high-resolution images based on spatial control prompts. We have applied an image generation model to FEA to demonstrate that it can serve as a useful alternative to the traditional FEA workflow. To achieve this, we developed a novel data synthesis pipeline that generated a dataset of 100,000 samples. We then trained a custom model architecture on this dataset, which yielded good qualitative results for most cases. Quantitative predictions were found to be restricted by the dataset’s constraints. At the current training stage, our model has a Mean Absolute Error (MAE) of 0.0144. The proposed model utilizes input images of the geometry, fixed constraints, and static loads to generate a predicted displacement field, thereby circumventing the intricacies of modeling and meshing in the finite element analysis (FEA) workflow and enabling near-instantaneous analysis.

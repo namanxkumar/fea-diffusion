@@ -45,7 +45,7 @@ parser.add_argument(
     help="Checkpoint to load from (should be in results folder).",
     required=True,
 )
-parser.add_argument("--use_ema_model", action="store_true", help="Use EMA model.")
+# parser.add_argument("--use_ema_model", action="store_true", help="Use EMA model.")
 # parser.add_argument('--successive_sampling', action='store_true', help='Use successive sampling.')
 parser.add_argument("--milestone", type=str, default="test", help="Milestone name.")
 
@@ -59,10 +59,10 @@ args = parser.parse_args()
 
 model = FDNUNet(
     input_dim=64,
-    num_channels=2, # geometry/displacement (2)
+    num_channels=2,  # geometry/displacement (2)
     # num_condition_channels=1, # geometry (1)
-    num_auxiliary_condition_channels=3, # constraints (1) + force (2)
-    num_stages=4
+    num_auxiliary_condition_channels=3,  # constraints (1) + force (2)
+    num_stages=4,
 )
 
 trainer = Trainer(
@@ -82,4 +82,4 @@ trainer.load_checkpoint(args.checkpoint)
 # if args.successive_sampling:
 #     trainer.successive_sample_and_save(milestone = args.milestone, use_ema_model=args.use_ema_model)
 # else:
-trainer.sample_and_save(milestone=args.milestone, use_ema_model=args.use_ema_model, progress_bar=True)
+trainer.sample_and_save(milestone=args.milestone, progress_bar=True)
