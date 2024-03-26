@@ -8,9 +8,9 @@ python train_model.py \
 --batch_size \
 --num_gradient_accumulation_steps \
 --num_steps 6 \
---num_steps_per_milestone \
---learning_rate \
---loss_type \
+--num_steps_per_milestone 500 \
+--loss_type "l2" \
 --use_wandb \
---wandb_project \
---wandb_restrict_cache 
+--wandb_project "fea_diffusion_2"
+# --wandb_restrict_cache 
+# --learning_rate 
