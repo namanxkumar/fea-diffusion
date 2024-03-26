@@ -30,7 +30,7 @@ std_displacement = np.zeros(40)
 # print("Std displacement: ", np.nanmean(std_displacement))
 
 
-mesh = pv.read(f'data/sanitycheck/normaliseddisplacementfixed/71/1/domain.1.vtk/')
+mesh = pv.read(f'data/feadata/2/2/domain.1.vtk/')
 displacement = np.array(mesh.point_data["u"][:,:2])
 displacement = np.abs(displacement)
 print(displacement)
