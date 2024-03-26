@@ -352,21 +352,23 @@ class FEADataset(Dataset):
         sample["materials"] = material_tensor
 
         path = str(self.path / f"{plate_index}" / f"{condition_index}" / f"ranges.txt")
+        with open(
+            self.path / f"{plate_index}" / f"{condition_index}" / f"ranges.txt", "r"
+        ) as f:
+            all_ranges = list(map(lambda x: tuple(x.strip().split(":")), f.readlines()))
+
         line = (step_index - 1) * 2
-        line += 1
-        ranges = [
-            getline(
-                path,
-                step,
-            )
-            for step in [line, line + 1]
-        ]
-        print(ranges)
-        ranges = list(map(lambda x: list(eval(tuple(x.strip().split(":"))[1])), ranges))
-        # combine list of lists into a single list
-        ranges = [item for sublist in ranges for item in sublist]
+
+        ranges = []
+
+        for index in [line, line + 1]:
+            ranges += list(eval(all_ranges[index][1]))
 
         sample["displacement_range"] = torch.tensor(ranges, dtype=torch.float32)
+        sample["log_displacement_range"] = torch.log(
+            1 + torch.abs(sample["displacement_range"])
+        )
+        sample["sign_displacement_range"] = (sample["displacement_range"] >= 0).int()
 
         return sample
 
@@ -468,9 +470,9 @@ class Trainer:
         )
         self.num_samples = len(self.sample_dataset)
 
-        assert (
-            len(self.dataset) >= 100
-        ), "you should have at least 100 samples in your folder. at least 10k images recommended"
+        # assert (
+        #     len(self.dataset) >= 100
+        # ), "you should have at least 100 samples in your folder. at least 10k images recommended"
 
         self.train_dataloader = DataLoader(
             self.dataset,
@@ -552,6 +554,11 @@ class Trainer:
         torch.save(checkpoint, str(self.results_folder / f"model-{milestone}.pt"))
 
     def save_checkpoint(self, milestone):
+        if not self.accelerator.is_local_main_process:
+            return
+
+        self.delete_checkpoint_if_exists(milestone)
+
         self.accelerator.save_state(self.results_folder / f"model-{milestone}")
 
         with ZipFile(self.results_folder / f"model-{milestone}.zip", "w") as zip:
@@ -563,6 +570,20 @@ class Trainer:
         for file in path.iterdir():
             file.unlink()
         path.rmdir()
+
+    def delete_checkpoint_if_exists(self, milestone):
+        if not self.accelerator.is_local_main_process:
+            return
+
+        path = self.results_folder / f"model-{milestone}"
+        if path.exists():
+            for file in path.iterdir():
+                file.unlink()
+            path.rmdir()
+
+        path = self.results_folder / f"model-{milestone}.zip"
+        if path.exists():
+            path.unlink()
 
     def old_load_checkpoint(self, milestone: int, old_step=True):
         accelerator = self.accelerator
@@ -637,7 +658,7 @@ class Trainer:
             return torch.sum(
                 torch.stack(
                     [
-                        F.mse_loss(sampled_tensor, groundtruth_tensor)
+                        F.mse_loss(sampled_tensor, torch.log(groundtruth_tensor))
                         for sampled_tensor, groundtruth_tensor in zip(
                             sampled_tensors, groundtruth_tensors
                         )
@@ -684,7 +705,7 @@ class Trainer:
         self,
         sample: Dict[str, Tensor],
         # use_ema_model: bool = False,
-    ) -> Tuple[Tensor, Optional[Tensor]]:
+    ) -> Tuple[Tensor, Optional[Tuple[Tensor, Tensor]]]:
         conditions = torch.cat((sample["forces"], sample["constraints"]), dim=1).to(
             self.device
         )
@@ -705,17 +726,28 @@ class Trainer:
         # prediction = prediction * (1.0 - self.unnormalize_from_negative_one_to_one(sample['constraints'])) # Mask out the regions that are constrained
         return image_prediction, range_prediction
 
+    def create_view_friendly_range(
+        self, sign_range_output: Tensor, log_range_output: Tensor
+    ) -> Tensor:
+        sign = (sign_range_output < 0.5).int() * 2 - 1
+        return sign * (torch.exp(log_range_output) - 1)
+
     def sample(self, batch) -> Tuple[List[Tensor], Optional[List[Tensor]], Tensor]:
         with torch.inference_mode():
             image_output, range_output = self.sample_model(batch)
+
             loss = self.calculate_losses(
                 (
-                    [image_output, range_output]
+                    [image_output, *range_output]
                     if exists(range_output)
                     else [image_output]
                 ),
                 (
-                    [batch["displacement"], batch["displacement_range"]]
+                    [
+                        batch["displacement"],
+                        batch["sign_displacement_range"],
+                        batch["log_displacement_range"],
+                    ]
                     if exists(range_output)
                     else [batch["displacement"]]
                 ),
@@ -724,7 +756,14 @@ class Trainer:
             ranges = []
             for batch_index in range(image_output.shape[0]):
                 if exists(range_output):
-                    ranges.append(range_output[batch_index])
+                    ranges.append(
+                        self.create_view_friendly_range(
+                            *(
+                                range[batch_index].clone().detach()
+                                for range in range_output
+                            )
+                        )
+                    )
 
                 for channel_index in range(image_output.shape[1]):
                     images.append(
@@ -800,7 +839,7 @@ class Trainer:
 
                 plt.imsave(
                     str(pathname / f"sample_{axis}_{step}.png"),
-                    torch.squeeze(image).cpu().detach().numpy(),
+                    torch.squeeze(image).clone().detach().cpu().numpy(),
                     cmap="Greys",
                     vmin=0,
                     vmax=255,
@@ -810,7 +849,7 @@ class Trainer:
                 if exists(range):
                     np.savetxt(
                         str(pathname / f"sample_{axis}_{step}.txt"),
-                        range,
+                        range.clone().detach().cpu().numpy(),
                     )
 
         total_sample_loss /= num_batches
@@ -839,6 +878,7 @@ class Trainer:
             total=self.num_train_steps,
             disable=not self.accelerator.is_main_process,
         ) as progress_bar:
+            lowest_sample_loss = float("inf")
             while self.step.step < self.num_train_steps:
                 total_loss = 0.0
                 # with tqdm(initial = 0, total = self.num_gradient_accumulation_steps, disable = not self.accelerator.is_main_process, leave=False) as inner_progress_bar:
@@ -846,15 +886,18 @@ class Trainer:
                     batch: dict = next(self.train_yielder)
 
                     image_output, range_output = self.sample_model(batch)
-
                     loss = self.calculate_losses(
                         (
-                            [image_output, range_output]
+                            [image_output, *range_output]
                             if exists(range_output)
                             else [image_output]
                         ),
                         (
-                            [batch["displacement"], batch["displacement_range"]]
+                            [
+                                batch["displacement"],
+                                batch["sign_displacement_range"],
+                                batch["log_displacement_range"],
+                            ]
                             if exists(range_output)
                             else [batch["displacement"]]
                         ),
@@ -901,7 +944,12 @@ class Trainer:
                                 self.sample_and_save()
                             )
                             logging.info(f"sample loss: {total_sample_loss:.4f}")
-                        self.save_checkpoint(milestone)
+
+                        if total_sample_loss < lowest_sample_loss:
+                            lowest_sample_loss = total_sample_loss
+                            self.save_checkpoint("best")
+                        else:
+                            self.save_checkpoint("latest")
                     elif (
                         self.step.step != 0
                         and self.step.step % self.num_steps_per_soft_milestone == 0

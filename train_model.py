@@ -1,6 +1,7 @@
 from model.diffusion import Trainer
 from model.unet import UNet
 from model.fdnunet import FDNUNet
+from model.fdnunetwithaux import FDNUNetWithAux
 
 from typing import Optional, List
 
@@ -107,9 +108,19 @@ def inject_function(
 #     num_condition_channels=4, # constraints (1) + force (2) + geometry (1)
 # )
 
-model = FDNUNet(
+# model = FDNUNet(
+#     input_dim=64,
+#     num_channels=2,  # geometry (2)
+#     # num_condition_channels=1, # geometry (1)
+#     num_auxiliary_condition_channels=3,  # constraints (1) + force (2)
+#     num_stages=4,
+# )
+
+model = FDNUNetWithAux(
     input_dim=64,
-    num_channels=2,  # geometry (2)
+    image_height=args.image_size,
+    image_width=args.image_size,
+    num_channels=2,  # materials (2)
     # num_condition_channels=1, # geometry (1)
     num_auxiliary_condition_channels=3,  # constraints (1) + force (2)
     num_stages=4,

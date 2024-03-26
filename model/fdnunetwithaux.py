@@ -252,7 +252,7 @@ class ConditionedResnetBlock(nn.Module):
                 num_groups_for_normalization=num_groups_for_normalization,
             )
             if use_fdn
-            else nn.Identity()
+            else None
         )
 
         self.block1 = (
@@ -272,14 +272,14 @@ class ConditionedResnetBlock(nn.Module):
                 num_groups_for_normalization=num_groups_for_normalization,
             )
             if use_fdn
-            else nn.Identity()
+            else None
         )
 
         self.block2 = (
             LeanResnetSubBlock(output_dim, output_dim)
             if use_fdn
             else ResnetSubBlock(
-                input_dim,
+                output_dim,
                 output_dim,
                 num_groups_for_normalization=num_groups_for_normalization,
             )
@@ -300,7 +300,10 @@ class ConditionedResnetBlock(nn.Module):
         if self.use_fdn:
             assert exists(condition_features), "condition features must be provided"
 
-        h = self.conditional_block1(x, condition_features)
+        h = x
+
+        if exists(self.conditional_block1):
+            h = self.conditional_block1(x, condition_features)
 
         scale_shift = None
         if exists(self.time_embedding_to_scale_shift) and exists(time_embedding):
@@ -311,7 +314,10 @@ class ConditionedResnetBlock(nn.Module):
             )  # split into scale and shift each of dimension b c/2 1 1
 
         h = self.block1(h, scale_shift=scale_shift)
-        h = self.conditional_block2(h, condition_features)
+
+        if exists(self.conditional_block2):
+            h = self.conditional_block2(h, condition_features)
+
         h = self.block2(h)
 
         return h + self.residual_convolution(x)
@@ -335,8 +341,8 @@ class AuxiliaryRangePredictor(nn.Module):
     def __init__(
         self,
         input_dim: int,
-        image_height: int,
-        image_width: int,
+        middle_height: int,
+        middle_width: int,
         output_dim: int,
         hidden_dim: int = 256,
         num_layers: int = 3,
@@ -344,12 +350,12 @@ class AuxiliaryRangePredictor(nn.Module):
         super().__init__()
 
         self.flatten = Rearrange(
-            "b c h w -> b (c h w)", h=image_height, w=image_width, c=input_dim
+            "b c h w -> b (c h w)", h=middle_height, w=middle_width, c=input_dim
         )
 
         self.layers = nn.Sequential(
             nn.Linear(
-                input_dim * image_height * image_width,
+                input_dim * middle_height * middle_width,
                 hidden_dim,
             ),
             nn.ReLU(),
@@ -357,12 +363,25 @@ class AuxiliaryRangePredictor(nn.Module):
                 nn.Sequential(nn.Linear(hidden_dim, hidden_dim), nn.ReLU())
                 for _ in range(num_layers - 2)
             ],
+        )
+
+        self.sigmoid_output_layer = nn.Sequential(
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, output_dim),
+            nn.Sigmoid(),
+        )
+
+        self.log_output_layer = nn.Sequential(
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.ReLU(),
             nn.Linear(hidden_dim, output_dim),
         )
 
     def forward(self, x: Tensor):
         x = self.flatten(x)
-        return self.layers(x)
+        x = self.layers(x)
+        return self.sigmoid_output_layer(x), self.log_output_layer(x)
 
 
 # class LinearAttention(nn.Module):
@@ -489,6 +508,7 @@ class FDNUNetWithAux(nn.Module):
 
     Note: Model outputs absolute value of ranges, take the negative of even indices to get the range
     """
+
     def __init__(
         self,
         input_dim: int,
@@ -596,19 +616,7 @@ class FDNUNetWithAux(nn.Module):
         self.up_layers = nn.ModuleList([])
 
         # Define Downsampling Layers
-        for index, (
-            (input_dim, output_dim),
-            # use_full_attention,
-            # num_attention_heads,
-            # attention_head_dim,
-        ) in enumerate(
-            # zip(
-            stagewise_input_to_output_dims,
-            # stagewise_use_full_attention,
-            # stagewise_num_attention_heads,
-            # stagewise_attention_head_dim,
-            # )
-        ):
+        for index, (input_dim, output_dim) in enumerate(stagewise_input_to_output_dims):
             is_last = index == (num_stages - 1)
 
             # attention_module = (
@@ -654,23 +662,8 @@ class FDNUNetWithAux(nn.Module):
         )
 
         # Define Upsampling Layers
-        for index, (
-            (input_dim, output_dim),
-            # use_full_attention,
-            # num_attention_heads,
-            # attention_head_dim,
-        ) in enumerate(
-            zip(
-                *map(
-                    reversed,
-                    (
-                        stagewise_input_to_output_dims,
-                        # stagewise_use_full_attention,
-                        # stagewise_num_attention_heads,
-                        # stagewise_attention_head_dim,
-                    ),
-                )
-            )
+        for index, (input_dim, output_dim) in enumerate(
+            reversed(stagewise_input_to_output_dims)
         ):
             is_last = index == (num_stages - 1)
 
@@ -704,8 +697,8 @@ class FDNUNetWithAux(nn.Module):
         # Define Auxiliary Range Predictor
         self.auxiliary_range_predictor = AuxiliaryRangePredictor(
             input_dim=middle_dim,
-            image_height=image_height,
-            image_width=image_width,
+            middle_height=image_height // (2 ** (num_stages - 1)),
+            middle_width=image_width // (2 ** (num_stages - 1)),
             output_dim=self.final_dim * 2,
             hidden_dim=range_prediction_hidden_dim,
             num_layers=range_prediction_num_layers,
@@ -771,11 +764,9 @@ class FDNUNetWithAux(nn.Module):
         # x = self.middle_attention(x) + x
         x = self.middle_block_2(x, auxiliary_condition_features[-1])
         # x = self.middle_block_2(x, auxiliary_condition_features[-1], time_embedding = time_embedding)
-
-        auxiliary_range = self.auxiliary_range_predictor(x)
-
-        # Take the negative of even indices to get the range
-        auxiliary_range[..., ::2] = -auxiliary_range[..., ::2]
+        auxiliary_range_tuple = self.auxiliary_range_predictor(x)
+        # # Take the negative of even indices to get the range
+        # auxiliary_range[..., [0, 2]] = -auxiliary_range[..., [0, 2]]
 
         for index, (
             block_1,
@@ -787,7 +778,7 @@ class FDNUNetWithAux(nn.Module):
                 (x, hidden_states.pop()), dim=1
             )  # concat along the channel dimension
             x = block_1(
-                x,
+                x
                 # auxiliary_condition_features[-(index + 2)],
             )
             # x = block_1(x, auxiliary_condition_features[-(index + 2)], time_embedding = time_embedding)
@@ -796,7 +787,7 @@ class FDNUNetWithAux(nn.Module):
                 (x, hidden_states.pop()), dim=1
             )  # concat along the channel dimension
             x = block_2(
-                x,
+                x
                 # auxiliary_condition_features[-(index + 2)],
             )
             # x = block_2(x, auxiliary_condition_features[-(index + 2)], time_embedding = time_embedding)
@@ -814,4 +805,4 @@ class FDNUNetWithAux(nn.Module):
         x = self.final_convolution(x)
         x = x / x.amax(dim=(-2, -1), keepdim=True)  # normalize to [-1, 1] range
 
-        return x, auxiliary_range
+        return x, auxiliary_range_tuple
