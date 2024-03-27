@@ -1,23 +1,33 @@
-from model.diffusion import Trainer
-from model.unet import UNet
-from model.fdnunet import FDNUNet
-from model.fdnunetwithaux import FDNUNetWithAux
-
-from typing import Optional, List
+import argparse
+import os
+from pathlib import Path
+from typing import List, Optional
 
 from torch import Tensor
 
-import os
+from model.diffusion import Trainer
 
-import argparse
-
-from pathlib import Path
+# from model.unet import UNet
+# from model.fdnunet import FDNUNet
+from model.fdnunetwithaux import FDNUNetWithAux
 
 parser = argparse.ArgumentParser(description="Train model.")
 
 parser.add_argument("--data_dir", type=str, default="data", help="Data directory.")
 parser.add_argument(
     "--sample_data_dir", type=str, default="sample_data", help="Sample data directory."
+)
+parser.add_argument(
+    "--num_steps_per_sample_condition",
+    type=int,
+    default=6,
+    help="Number of steps per sample condition.",
+)
+parser.add_argument(
+    "--num_steps_per_condition",
+    type=int,
+    default=6,
+    help="Number of steps per condition.",
 )
 parser.add_argument(
     "--num_sample_conditions_per_plate",
@@ -130,6 +140,8 @@ trainer = Trainer(
     model=model,
     dataset_folder=args.data_dir,
     sample_dataset_folder=args.sample_data_dir,
+    num_steps_per_condition=args.num_steps_per_condition,
+    num_steps_per_sample_condition=args.num_steps_per_sample_condition,
     num_sample_conditions_per_plate=args.num_sample_conditions_per_plate,
     num_gradient_accumulation_steps=args.num_gradient_accumulation_steps,
     dataset_image_size=args.image_size,

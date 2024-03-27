@@ -1,35 +1,28 @@
-from pathlib import Path
-
-from tqdm.autonotebook import tqdm
-from .fdnunet import FDNUNet
-from .fdnunetwithaux import FDNUNetWithAux
-
-import matplotlib.pyplot as plt
-
-import torch
-from torch import nn, Tensor
-from torch.optim import Adam
-from torch.utils.data import Dataset, DataLoader
-import torch.nn.functional as F
-import torchvision.transforms as transforms
-import torchvision.transforms.functional as TF
-
-from zipfile import ZipFile
-
-import numpy as np
-
-from accelerate import Accelerator
-
-from ema_pytorch import EMA
-
-from PIL import Image
-
 import logging
 from datetime import datetime
 
-from typing import Optional, Dict, Tuple, List, Union
+# from linecache import getline
+from pathlib import Path
+from typing import Dict, List, Optional, Tuple, Union
+from zipfile import ZipFile
 
-from linecache import getline
+import matplotlib.pyplot as plt
+import numpy as np
+import torch
+import torch.nn.functional as F
+import torchvision.transforms as transforms
+import torchvision.transforms.functional as TF
+from accelerate import Accelerator
+
+# from ema_pytorch import EMA
+from PIL import Image
+from torch import Tensor, nn
+from torch.optim import Adam
+from torch.utils.data import DataLoader, Dataset
+from tqdm.autonotebook import tqdm
+
+# from .fdnunet import FDNUNet
+from .fdnunetwithaux import FDNUNetWithAux
 
 # In regular diffusion implementations, a groundtruth image is provided from the dataset, a random timestep is generated for each forward pass,
 # the corresponding amount of noise is added to the groundtruth image to degrade it, and the predicted image is sampled from the model.
@@ -220,7 +213,7 @@ class FEADataset(Dataset):
         # FORCE IMAGES
 
         with open(
-            self.path / f"{plate_index}" / f"{condition_index}" / f"magnitudes.txt", "r"
+            self.path / f"{plate_index}" / f"{condition_index}" / "magnitudes.txt", "r"
         ) as f:
             magnitudes = list(map(lambda x: tuple(x.strip().split(":")), f.readlines()))
 
@@ -298,7 +291,7 @@ class FEADataset(Dataset):
         # MATERIAL IMAGES
 
         with open(
-            self.path / f"{plate_index}" / f"{condition_index}" / f"materials.txt", "r"
+            self.path / f"{plate_index}" / f"{condition_index}" / "materials.txt", "r"
         ) as f:
             regions = list(map(lambda x: tuple(x.strip().split(":")), f.readlines()))
 
@@ -351,9 +344,9 @@ class FEADataset(Dataset):
         # sample["materials"] = torch.sum(torch.stack(materials, dim=0), dim=0)
         sample["materials"] = material_tensor
 
-        path = str(self.path / f"{plate_index}" / f"{condition_index}" / f"ranges.txt")
+        path = str(self.path / f"{plate_index}" / f"{condition_index}" / "ranges.txt")
         with open(
-            self.path / f"{plate_index}" / f"{condition_index}" / f"ranges.txt", "r"
+            self.path / f"{plate_index}" / f"{condition_index}" / "ranges.txt", "r"
         ) as f:
             all_ranges = list(map(lambda x: tuple(x.strip().split(":")), f.readlines()))
 
@@ -406,8 +399,8 @@ class Trainer:
         train_batch_size: int = 16,
         sample_batch_size: Optional[int] = None,
         num_sample_conditions_per_plate: int = 1,
-        num_steps_per_condition: int = 11,
-        num_steps_per_sample_condition: int = 11,
+        num_steps_per_condition: int = 6,
+        num_steps_per_sample_condition: int = 6,
         num_gradient_accumulation_steps: int = 1,
         train_learning_rate: float = 1e-4,
         num_train_steps: int = 1000,
@@ -446,8 +439,8 @@ class Trainer:
         self.max_gradient_norm = max_gradient_norm
 
         assert (
-            train_batch_size * num_gradient_accumulation_steps
-        ) >= 16, f"your effective batch size (train_batch_size x num_gradient_accumulation_steps) should be at least 16 or above"
+            (train_batch_size * num_gradient_accumulation_steps) >= 16
+        ), "your effective batch size (train_batch_size x num_gradient_accumulation_steps) should be at least 16 or above"
 
         self.num_train_steps = num_train_steps
 
@@ -470,9 +463,9 @@ class Trainer:
         )
         self.num_samples = len(self.sample_dataset)
 
-        # assert (
-        #     len(self.dataset) >= 100
-        # ), "you should have at least 100 samples in your folder. at least 10k images recommended"
+        assert (
+            len(self.dataset) >= 100
+        ), "you should have at least 100 samples in your folder. at least 10k images recommended"
 
         self.train_dataloader = DataLoader(
             self.dataset,
