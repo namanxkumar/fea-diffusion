@@ -2,10 +2,10 @@ import math
 import os
 from os import path
 from typing import Dict, List, Optional, Tuple
-import pyvista as pv
+
 import numpy as np
 from PIL import Image
-from sfepy.base.base import IndexedStruct, Struct, output
+from sfepy.base.base import IndexedStruct, Struct
 from sfepy.discrete import (
     Equation,
     Equations,
@@ -163,11 +163,13 @@ class FEAnalysis:
         self.nls_solver = self._create_nls_solver()
         self.num_steps = num_steps
 
+    def clear_condition_dir(self):
+        for file in os.listdir(self.condition_dir):
+            os.remove(path.join(self.condition_dir, file))
+
     def _append_region_value_to_file(
         self, filename: str, region_name: str, value: Tuple[float, float]
     ):
-        if filename in os.listdir(self.condition_dir):
-            os.remove(path.join(self.condition_dir, filename))
         with open(path.join(self.condition_dir, filename), "a+") as f:
             f.write("{}:{}\n".format(region_name, str(value)))
 
@@ -450,7 +452,7 @@ class FEAnalysis:
         #             path.join(self.condition_dir, "domain.{:0>2}.vtk".format(step)),
         #         )
         # print(variables.get_state_parts())
-        data = np.array(variables.create_output()['u'].data)
+        data = np.array(variables.create_output()["u"].data)
 
         # check if data contains nans
         if np.isnan(data).any():
@@ -563,7 +565,6 @@ class FEAnalysis:
                 save = True
 
             for type, config in output_file_config.items():
-
                 # system("sfepy-view domain.??.vtk -f {} -s {} {} -o {}".format(config, step, self.common_config, filename))
 
                 # these values are found by trial and error and correspond to the current force magnitude range (max 5000N), need updating if force magnitude range changes

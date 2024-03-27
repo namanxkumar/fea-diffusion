@@ -1,6 +1,6 @@
 import os
 from timeit import default_timer as timer
-from typing import Dict, Optional, Tuple
+from typing import Optional, Tuple
 
 from tqdm.autonotebook import tqdm
 
@@ -54,7 +54,7 @@ def generate_data(
     while plate_index < num_plates:
         try:
             geometry = generator.generate_geometry()
-        except:
+        except Exception:
             continue
 
         # print("PLATE INDEX {}".format(plate_index + 1), "\n")
@@ -114,6 +114,7 @@ def generate_data(
                     )
                 )
                 print("Regenerating condition")
+                analyzer.clear_condition_dir()
                 new_condition = generator.sample_conditions(
                     polygons_ptags, polygons_ltag_ptags, num_conditions=1
                 )[0]

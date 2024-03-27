@@ -703,7 +703,10 @@ class Trainer:
             self.device
         )
         primary_input = sample["materials"].to(self.device)
-        # iteration_index = sample['iteration_index'].to(self.device)
+
+        print(
+            sample["plate_index"], sample["condition_index"], sample["iteration_index"]
+        )
 
         if type(self.model) == FDNUNetWithAux:
             image_prediction, range_prediction = self.model(primary_input, conditions)
