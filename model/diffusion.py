@@ -259,7 +259,7 @@ class FEADataset(Dataset):
                         lambda value: np.sign(value)
                         * (
                             self._scale_log(
-                                float(abs(value) * (step_index / self.num_steps))
+                                float(abs(value) * ((step_index - 1) / self.num_steps))
                             )
                         ),
                         values,
