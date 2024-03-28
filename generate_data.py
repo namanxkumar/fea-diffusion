@@ -65,7 +65,7 @@ def wandb_inject_function(plate_index, total_time, remaining):
         log_dict["total_time"] = total_time
     if remaining is not None:
         log_dict["remaining"] = remaining
-    wandb.log(log_dict)
+    # wandb.log(log_dict)
 
 generate_data(
     data_dir=args.data_dir,
