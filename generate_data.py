@@ -1,6 +1,6 @@
 from datagen.generate import generate_data
 import argparse
-import wandb
+
 
 parser = argparse.ArgumentParser(description="Generate data for training.")
 parser.add_argument(
@@ -35,14 +35,21 @@ parser.add_argument(
 parser.add_argument("--save_strain", action="store_true", help="Save strain images.")
 parser.add_argument("--save_stress", action="store_true", help="Save stress images.")
 parser.add_argument("--data_dir", type=str, default="data", help="Data directory.")
+parser.add_argument("--use_wandb", action="store_true", help="Use wandb.")
+parser.add_argument("--wandb_project", type=str, help="Wandb project name.")
+parser.add_argument(
+    "--wandb_restrict_cache", type=int, default=10, help="Restrict wandb cache."
+)
 
 args = parser.parse_args()
 
 assert (
     args.save_displacement or args.save_strain or args.save_stress
 ), "Must save at least one of displacement, strain, or stress."
-
-run = wandb.init(project = 'datagen1')
+if args.use_wandb:
+    import wandb
+    assert args.wandb_project is not None, "Must specify wandb project name."
+    run = wandb.init(project =args.wandb_project)
 
 
 def wandb_inject_function(plate_index, total_time, remaining):
