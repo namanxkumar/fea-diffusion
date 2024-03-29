@@ -26,6 +26,8 @@ def generate_data(
     save_stress: bool = False,
     num_steps_per_condition: int = 11,
     save_meshes: bool = False,
+    wandb_inject_function = None
+
 ):
     assert num_steps_per_condition > 1, "Must have at least 2 steps per condition."
 
@@ -154,7 +156,10 @@ def generate_data(
                 save_stress=save_stress,
             )
             condition_index += 1
-
+        rate = plate_progress_bar.format_dict["rate"]
+        remaining = (plate_progress_bar.total - plate_progress_bar.n) / rate if rate and plate_progress_bar.total else 0    
+        if wandb_inject_function is not None:
+            wandb_inject_function(plate_index, total_time, remaining)
         plate_index += 1
         plate_progress_bar.update(1)
         print("PLATE TIME:", total_time)

@@ -42,16 +42,17 @@ MATERIALS = [
     Material(name="Lead", youngs_modulus=17500, poissons_ratio=0.44),
     Material(name="Magnesium", youngs_modulus=46500, poissons_ratio=0.35),
     Material(name="Concrete", youngs_modulus=30000, poissons_ratio=0.2),
-    Material(name="Wood", youngs_modulus=11000, poissons_ratio=0.35),
-    Material(name="Glass", youngs_modulus=64000, poissons_ratio=0.22),
-    Material(name="Plastic", youngs_modulus=3000, poissons_ratio=0.4),
+    # Material(name="Wood", youngs_modulus=11000, poissons_ratio=0.35),
+    Material(name="Fibre Glass", youngs_modulus=84700, poissons_ratio=0.26),
+    Material(name = "Carbon Fibre A4S", youngs_modulus = 225000, poissons_ratio = 0.25),
+    # Material(name="Plastic", youngs_modulus=3000, poissons_ratio=0.4),
     # Material(name="Rubber", youngs_modulus=0.01, poissons_ratio=0.499),
     Material(name="Bronze", youngs_modulus=120000, poissons_ratio=0.34),
     Material(name="Tungsten", youngs_modulus=411000, poissons_ratio=0.28),
     Material(name="Silver", youngs_modulus=83000, poissons_ratio=0.37),
     Material(name="Gold", youngs_modulus=78000, poissons_ratio=0.44),
     Material(name="Platinum", youngs_modulus=168000, poissons_ratio=0.38),
-]
+    ]
 
 
 class MeshGenerator:
@@ -62,7 +63,7 @@ class MeshGenerator:
         holes_per_polygon_range: Tuple[int, int] = (0, 3),
         points_per_hole_range: Tuple[int, int] = (3, 4),
         num_regions: Tuple[int, int] = (1, 5),
-        force_magnitude_range: Tuple[int, int] = (1, 5000),
+        force_magnitude_range: Tuple[int, int] = (1, 1000),
         random_seed=None,
     ):
         self.num_polygons_range = num_polygons_range

@@ -1,6 +1,7 @@
 from datagen.generate import generate_data
 import argparse
 
+
 parser = argparse.ArgumentParser(description="Generate data for training.")
 parser.add_argument(
     "--num_plates", type=int, default=1, help="Number of plates to generate."
@@ -34,12 +35,37 @@ parser.add_argument(
 parser.add_argument("--save_strain", action="store_true", help="Save strain images.")
 parser.add_argument("--save_stress", action="store_true", help="Save stress images.")
 parser.add_argument("--data_dir", type=str, default="data", help="Data directory.")
+parser.add_argument("--use_wandb", action="store_true", help="Use wandb.")
+parser.add_argument("--wandb_project", type=str, help="Wandb project name.")
+parser.add_argument(
+    "--wandb_restrict_cache", type=int, default=10, help="Restrict wandb cache."
+)
 
 args = parser.parse_args()
 
 assert (
     args.save_displacement or args.save_strain or args.save_stress
 ), "Must save at least one of displacement, strain, or stress."
+if args.use_wandb:
+    import wandb
+    assert args.wandb_project is not None, "Must specify wandb project name."
+    run = wandb.init(project =args.wandb_project)
+
+
+def wandb_inject_function(plate_index, total_time, remaining):
+    log_dict = {
+        "plate_index" : plate_index,
+        "total_time" : total_time,
+        "remaining" : remaining,
+    }
+
+    if plate_index is not None:
+        log_dict["plate_index"] = plate_index
+    if total_time is not None:
+        log_dict["total_time"] = total_time
+    if remaining is not None:
+        log_dict["remaining"] = remaining
+    # wandb.log(log_dict)
 
 generate_data(
     data_dir=args.data_dir,
@@ -53,7 +79,9 @@ generate_data(
     save_stress=args.save_stress,
     num_steps_per_condition=args.steps_per_condition,
     save_meshes=args.save_meshes,
+    wandb_inject_function = wandb_inject_function,
 )
+
 
 # generate_data(
 #     data_dir="data",
