@@ -45,6 +45,7 @@ class FEADataset(Dataset):
         extension: str = "png",
         image_size=256,
         augmentation: bool = False,
+        start_plate_index: int = 1,
         conditions_per_plate: int = 4,
         num_steps: int = 11,
         min_max_magnitude: Optional[
@@ -63,6 +64,8 @@ class FEADataset(Dataset):
         self.extension = extension
         self.image_size = image_size
         self.augmentation = augmentation
+
+        self.start_plate_index = start_plate_index
 
         self.number_of_plate_geometries = len(
             [directory for directory in self.path.iterdir() if directory.is_dir()]
@@ -99,7 +102,7 @@ class FEADataset(Dataset):
     def __getitem__(self, index: int) -> Dict[str, Tensor]:
         # GET PLATE INDEX, CONDITION INDEX, AND STEP INDEX
 
-        plate_index = (index // (self.samples_per_plate)) + 1
+        plate_index = (index // (self.samples_per_plate)) + self.start_plate_index
         condition_index = (index % (self.samples_per_plate)) // self.num_steps + 1
         step_index = (index % (self.samples_per_plate)) % self.num_steps + 1
         sample = {}
