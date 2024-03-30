@@ -401,6 +401,8 @@ class Trainer:
         use_dataset_augmentation: bool = False,
         train_batch_size: int = 16,
         sample_batch_size: Optional[int] = None,
+        train_start_plate_index: int = 1,
+        sample_start_plate_index: int = 1,
         num_sample_conditions_per_plate: int = 1,
         num_steps_per_condition: int = 6,
         num_steps_per_sample_condition: int = 6,
@@ -456,6 +458,7 @@ class Trainer:
             image_size=dataset_image_size,
             augmentation=use_dataset_augmentation,
             num_steps=num_steps_per_condition,
+            start_plate_index=train_start_plate_index,
         )
         self.sample_dataset = FEADataset(
             sample_dataset_folder,
@@ -463,6 +466,7 @@ class Trainer:
             augmentation=False,
             conditions_per_plate=num_sample_conditions_per_plate,
             num_steps=num_steps_per_sample_condition,
+            start_plate_index=sample_start_plate_index,
         )
         self.num_samples = len(self.sample_dataset)
 
