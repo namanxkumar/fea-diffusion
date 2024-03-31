@@ -786,6 +786,9 @@ class Trainer:
         num_conditions = self.sample_dataset.conditions_per_plate_geometry
         num_steps = self.sample_dataset.num_steps
 
+        print(len(self.sample_dataset))
+        print(len(self.sample_dataloader))
+
         if progress_bar:
             self.sample_dataloader = tqdm(
                 enumerate(self.sample_dataloader), desc="Sampling"
