@@ -786,17 +786,14 @@ class Trainer:
         num_conditions = self.sample_dataset.conditions_per_plate_geometry
         num_steps = self.sample_dataset.num_steps
 
-        print(len(self.sample_dataset))
-        print(len(self.sample_dataloader))
-
         if progress_bar:
-            self.sample_dataloader = tqdm(
+            sample_dataloader_with_pb = tqdm(
                 enumerate(self.sample_dataloader), desc="Sampling"
             )
         else:
-            self.sample_dataloader = enumerate(self.sample_dataloader)
+            sample_dataloader_with_pb = enumerate(self.sample_dataloader)
 
-        for batch_index, batch in self.sample_dataloader:
+        for batch_index, batch in sample_dataloader_with_pb:
             images, ranges, loss = self.sample(batch)
 
             if ranges is not None:
@@ -958,7 +955,7 @@ class Trainer:
                         and self.step.step % self.num_steps_per_soft_milestone == 0
                     ):
                         with torch.inference_mode():
-                            _, _, total_sample_loss = self.sample_and_save()
+                            _, _, total_sample_loss = self.sample_and_save(save=False)
                             logging.info(f"sample loss: {total_sample_loss:.4f}")
 
                     if exists(wandb_inject_function):
