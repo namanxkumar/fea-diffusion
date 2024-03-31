@@ -851,7 +851,8 @@ class Trainer:
                         range.clone().detach().cpu().numpy(),
                     )
 
-        total_sample_loss /= num_batches
+        if num_batches != 0:
+            total_sample_loss /= num_batches
 
         image_filenames = None if not save else image_filenames
         return (
