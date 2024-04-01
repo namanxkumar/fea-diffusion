@@ -88,6 +88,9 @@ class FEADataset(Dataset):
     def normalize_to_negative_one_to_one(self, tensor: Tensor) -> Tensor:
         return tensor * 2.0 - 1.0
 
+    def unnormalize_from_negative_one_to_one(self, tensor: Tensor) -> Tensor:
+        return (tensor + 1.0) / 2.0
+
     @staticmethod
     def _scale_min_max(value: float, min_max: Tuple[float, float]) -> float:
         return (value - min_max[0]) / (min_max[1] - min_max[0])
@@ -315,6 +318,12 @@ class FEADataset(Dataset):
 
             # Ensure all values are either 0 or 1
             region_tensor = torch.clamp(255 * region_tensor, min=0, max=1.0)
+
+            # Check if region_tensor is all 0s
+            if torch.sum(region_tensor) == 0:
+                region_tensor = self.unnormalize_from_negative_one_to_one(
+                    sample["geometry"]
+                )
 
             # Normalize youngs modulus and poisson's ratio
             normalized_youngs_modulus = (
