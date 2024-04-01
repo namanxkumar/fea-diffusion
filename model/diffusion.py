@@ -323,7 +323,7 @@ class FEADataset(Dataset):
             if torch.sum(region_tensor) == 0:
                 region_tensor = self.unnormalize_from_negative_one_to_one(
                     sample["geometry"]
-                )
+                ).float()
 
             # Normalize youngs modulus and poisson's ratio
             normalized_youngs_modulus = (
