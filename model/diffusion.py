@@ -373,7 +373,9 @@ class FEADataset(Dataset):
         sample["log_displacement_range"] = torch.log(
             1 + torch.abs(sample["displacement_range"])
         )
-        sample["sign_displacement_range"] = (sample["displacement_range"] >= 0).int()
+        sample["sign_displacement_range"] = (
+            (sample["displacement_range"] >= 0).int().float()
+        )
 
         return sample
 
