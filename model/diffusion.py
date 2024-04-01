@@ -693,7 +693,7 @@ class Trainer:
             return torch.sum(
                 torch.stack(
                     [
-                        F.mse_loss(sampled_tensor, torch.log(groundtruth_tensor))
+                        F.mse_loss(sampled_tensor, groundtruth_tensor)
                         for sampled_tensor, groundtruth_tensor in zip(
                             sampled_tensors, groundtruth_tensors
                         )
