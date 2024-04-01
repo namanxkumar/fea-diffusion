@@ -979,7 +979,7 @@ class Trainer:
                         # self.ema.ema_model.eval()
 
                         with torch.inference_mode():
-                            milestone = self.step.step // self.num_steps_per_milestone
+                            # milestone = self.step.step // self.num_steps_per_milestone
                             image_filenames, ranges, total_sample_loss = (
                                 self.sample_and_save()
                             )
@@ -987,9 +987,10 @@ class Trainer:
 
                         if total_sample_loss < lowest_sample_loss:
                             lowest_sample_loss = total_sample_loss
-                            self.save_checkpoint("best")
+                            milestone = "best"
                         else:
-                            self.save_checkpoint("latest")
+                            milestone = "latest"
+                        self.save_checkpoint(milestone)
                     elif (
                         self.step.step != 0
                         and self.step.step % self.num_steps_per_soft_milestone == 0

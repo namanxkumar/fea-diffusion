@@ -110,12 +110,8 @@ def inject_function(
             os.system(f"wandb artifact cache cleanup {args.wandb_restrict_cache}")
         artifact = wandb.Artifact(name=f"checkpoint-{wandb.run.id}", type="model")
         if milestone == "latest":
-            artifact.add_file(
-                (Path(args.results_dir) / f"model-{milestone}-prev.zip").absolute()
-            )
-        artifact.add_file(
-            (Path(args.results_dir) / f"model-{milestone}.zip").absolute()
-        )
+            artifact.add_file((Path(args.results_dir) / f"model-{milestone}-prev.zip"))
+        artifact.add_file((Path(args.results_dir) / f"model-{milestone}.zip"))
 
 
 # model = UNet(
