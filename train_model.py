@@ -109,7 +109,7 @@ def inject_function(
         if args.wandb_restrict_cache is not None:
             os.system(f"wandb artifact cache cleanup {args.wandb_restrict_cache}")
         artifact = wandb.Artifact(name=f"checkpoint-{wandb.run.id}", type="model")
-        artifact.add_file(Path(args.results_dir) / f"model-{milestone}.zip")
+        artifact.add_file(str(Path(args.results_dir) / f"model-{milestone}.zip"))
 
 
 # model = UNet(
