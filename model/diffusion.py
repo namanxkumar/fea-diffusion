@@ -557,7 +557,10 @@ class Trainer:
         if not self.accelerator.is_local_main_process:
             return
 
-        self.delete_checkpoint_if_exists(milestone)
+        if milestone == "latest":
+            self.delete_previous_and_rename_current_checkpoint_if_exists(milestone)
+        else:
+            self.delete_checkpoint_if_exists(milestone)
 
         self.accelerator.save_state(self.results_folder / f"model-{milestone}")
 
@@ -584,6 +587,29 @@ class Trainer:
         path = self.results_folder / f"model-{milestone}.zip"
         if path.exists():
             path.unlink()
+
+    def delete_previous_and_rename_current_checkpoint_if_exists(self, milestone):
+        if not self.accelerator.is_local_main_process:
+            return
+
+        path = self.results_folder / f"model-{milestone}-prev"
+        if path.exists():
+            for file in path.iterdir():
+                file.unlink()
+            path.rmdir()
+
+        path = self.results_folder / f"model-{milestone}-prev.zip"
+        if path.exists():
+            path.unlink()
+
+        # Rename
+        path = self.results_folder / f"model-{milestone}"
+        if path.exists():
+            path.rename(self.results_folder / f"model-{milestone}-prev")
+
+        path = self.results_folder / f"model-{milestone}.zip"
+        if path.exists():
+            path.rename(self.results_folder / f"model-{milestone}-prev.zip")
 
     def old_load_checkpoint(self, milestone: int, old_step=True):
         accelerator = self.accelerator
