@@ -856,7 +856,10 @@ class Trainer:
                     image = output
                     range = None
                 axis = "x" if batch_output_index % 2 == 0 else "y"
-                index = batch_output_index // 2 + batch_index * self.sample_batch_size
+
+                index = (batch_output_index // 2) + (
+                    batch_index * self.sample_batch_size
+                )
                 plate = (index // (num_conditions * num_steps)) + 1
                 condition = (index % (num_conditions * num_steps)) // num_steps + 1
                 step = (index % (num_conditions * num_steps)) % num_steps + 1
