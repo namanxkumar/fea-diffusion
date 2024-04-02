@@ -381,10 +381,17 @@ class FEADataset(Dataset):
 
 
 class Step:
-    def __init__(self, step: int, gradient_accumulation_steps: int, batch_size: int):
+    def __init__(
+        self,
+        step: int,
+        gradient_accumulation_steps: int,
+        batch_size: int,
+        lowest_sample_loss: float = float("inf"),
+    ):
         self.step = step
         self.gradient_accumulation_steps = gradient_accumulation_steps
         self.batch_size = batch_size
+        self.lowest_sample_loss = lowest_sample_loss
 
     def load_state_dict(self, state_dict: dict):
         self.step = state_dict["step"]
@@ -392,12 +399,18 @@ class Step:
         self.batch_size = (
             state_dict["batch_size"] if "batch_size" in state_dict else self.batch_size
         )
+        self.lowest_sample_loss = (
+            state_dict["lowest_sample_loss"]
+            if "lowest_sample_loss" in state_dict
+            else self.lowest_sample_loss
+        )
 
     def state_dict(self):
         state_dict = {
             "step": self.step,
             "gradient_accumulation_steps": self.gradient_accumulation_steps,
             "batch_size": self.batch_size,
+            "lowest_sample_loss": self.lowest_sample_loss,
         }
         return state_dict
 
@@ -528,7 +541,9 @@ class Trainer:
             force=True,
         )
 
-        self.step = Step(0, num_gradient_accumulation_steps, train_batch_size)
+        self.step = Step(
+            0, num_gradient_accumulation_steps, train_batch_size, float("inf")
+        )
 
         # Prepare mode, optimizer, dataloader with accelerator
         (
@@ -918,7 +933,6 @@ class Trainer:
             total=self.num_train_steps,
             disable=not self.accelerator.is_main_process,
         ) as progress_bar:
-            lowest_sample_loss = float("inf")
             while self.step.step < self.num_train_steps:
                 total_loss = 0.0
                 # with tqdm(initial = 0, total = self.num_gradient_accumulation_steps, disable = not self.accelerator.is_main_process, leave=False) as inner_progress_bar:
@@ -985,8 +999,8 @@ class Trainer:
                             )
                             logging.info(f"sample loss: {total_sample_loss:.4f}")
 
-                        if total_sample_loss < lowest_sample_loss:
-                            lowest_sample_loss = total_sample_loss
+                        if total_sample_loss < self.step.lowest_sample_loss:
+                            self.step.lowest_sample_loss = total_sample_loss
                             milestone = "best"
                         else:
                             milestone = "latest"
