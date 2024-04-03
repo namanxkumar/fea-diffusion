@@ -22,7 +22,7 @@ from torch.utils.data import DataLoader, Dataset
 from tqdm.autonotebook import tqdm
 
 # from .fdnunet import FDNUNet
-from .fdnunetwithaux import FDNUNetWithAux
+from .fdnunetwithaux import FDNUNetAuxDecoder, FDNUNetDecoder, FDNUNetEncoder
 
 # In regular diffusion implementations, a groundtruth image is provided from the dataset, a random timestep is generated for each forward pass,
 # the corresponding amount of noise is added to the groundtruth image to degrade it, and the predicted image is sampled from the model.
@@ -418,9 +418,13 @@ class Step:
 class Trainer:
     def __init__(
         self,
-        model: nn.Module,
+        encoder: FDNUNetEncoder,
+        decoder: FDNUNetDecoder,
+        auxiliary: FDNUNetAuxDecoder,
         dataset_folder: str,
         sample_dataset_folder: str,
+        disable_auxiliary: bool = False,
+        only_auxiliary: bool = False,
         dataset_image_size: int = 256,
         use_dataset_augmentation: bool = False,
         train_batch_size: int = 16,
@@ -453,7 +457,16 @@ class Trainer:
             split_batches=use_batch_split_over_devices,
         )
 
-        self.model = model
+        self.encoder = encoder
+        self.decoder = decoder
+        self.auxiliary = auxiliary
+
+        self.disable_auxiliary = disable_auxiliary
+        self.only_auxiliary = only_auxiliary
+
+        assert not (
+            self.disable_auxiliary and self.only_auxiliary
+        ), "Cannot disable and only use auxiliary"
 
         # Parameters
         self.num_steps_per_milestone = num_steps_per_milestone
@@ -514,8 +527,14 @@ class Trainer:
         )
 
         # Optimizer
-        self.optimizer = Adam(
-            self.model.parameters(), lr=train_learning_rate, betas=adam_betas
+        self.encoder_optimizer = Adam(
+            self.encoder.parameters(), lr=train_learning_rate, betas=adam_betas
+        )
+        self.decoder_optimizer = Adam(
+            self.decoder.parameters(), lr=train_learning_rate, betas=adam_betas
+        )
+        self.auxiliary_optimizer = Adam(
+            self.auxiliary.parameters(), lr=train_learning_rate, betas=adam_betas
         )
 
         # Results
@@ -547,12 +566,23 @@ class Trainer:
 
         # Prepare mode, optimizer, dataloader with accelerator
         (
-            self.model,
-            self.optimizer,
+            self.encoder,
+            self.decoder,
+            self.auxiliary,
+            self.encoder_optimizer,
+            self.decoder_optimizer,
+            self.auxiliary_optimizer,
             self.train_dataloader,
             self.sample_dataloader,
         ) = self.accelerator.prepare(
-            self.model, self.optimizer, self.train_dataloader, self.sample_dataloader
+            self.encoder,
+            self.decoder,
+            self.auxiliary,
+            self.encoder_optimizer,
+            self.decoder_optimizer,
+            self.auxiliary_optimizer,
+            self.train_dataloader,
+            self.sample_dataloader,
         )
 
         # self.accelerator.register_for_checkpointing(self.ema)
@@ -660,7 +690,7 @@ class Trainer:
 
     def unzip_checkpoint(self, milestone: int):
         with ZipFile(self.results_folder / f"model-{milestone}.zip", "r") as zip:
-            zip.extractall(self.results_folder / f"model-{milestone}")
+            zip.extractall(self.results_folder)
 
     def load_checkpoint(
         self, milestone: int, override_batch_size: Optional[int] = None
@@ -757,23 +787,37 @@ class Trainer:
         self,
         sample: Dict[str, Tensor],
         # use_ema_model: bool = False,
-    ) -> Tuple[Tensor, Optional[Tuple[Tensor, Tensor]]]:
+    ) -> Tuple[Optional[Tensor], Optional[Tuple[Tensor, Tensor]]]:
         conditions = torch.cat((sample["forces"], sample["constraints"]), dim=1).to(
             self.device
         )
         primary_input = sample["materials"].to(self.device)
 
-        if type(self.model) == FDNUNetWithAux:
-            image_prediction, range_prediction = self.model(primary_input, conditions)
-        else:
-            image_prediction = self.model(primary_input, conditions)
-            range_prediction = None
+        x, hidden_states, residual = self.encoder.forward(primary_input, conditions)
+
+        image_prediction = None
+        range_prediction = None
+
+        if not self.disable_auxiliary:
+            range_prediction = self.auxiliary.forward(x)
+
+        if not self.only_auxiliary:
+            image_prediction = self.decoder.forward(x, hidden_states, residual)
+
+        # if type(self.model) == FDNUNetWithAux:
+        #     image_prediction, range_prediction = self.model(primary_input, conditions)
+        #     if self.model.only_auxiliary:
+        #         image_prediction = None
+        # else:
+        #     image_prediction = self.model(primary_input, conditions)
+        #     range_prediction = None
         # sample['geometry'] = sample['geometry'].to(prediction.device)
         # sample['constraints'] = sample['constraints'].to(prediction.device)
-        image_prediction = self.normalize_to_negative_one_to_one(
-            self.unnormalize_from_negative_one_to_one(image_prediction)
-            * self.unnormalize_from_negative_one_to_one(sample["geometry"]),
-        )  # Mask out the regions that are not part of the geometry
+        if exists(image_prediction):
+            image_prediction = self.normalize_to_negative_one_to_one(
+                self.unnormalize_from_negative_one_to_one(image_prediction)
+                * self.unnormalize_from_negative_one_to_one(sample["geometry"]),
+            )  # Mask out the regions that are not part of the geometry
         # prediction = prediction * (1.0 - self.unnormalize_from_negative_one_to_one(sample['constraints'])) # Mask out the regions that are constrained
         return image_prediction, range_prediction
 
@@ -783,29 +827,43 @@ class Trainer:
         sign = (sign_range_output < 0.5).int() * 2 - 1
         return sign * (torch.exp(log_range_output) - 1)
 
-    def sample(self, batch) -> Tuple[List[Tensor], Optional[List[Tensor]], Tensor]:
+    def sample(
+        self, batch
+    ) -> Tuple[Optional[List[Tensor]], Optional[List[Tensor]], Tensor]:
         with torch.inference_mode():
             image_output, range_output = self.sample_model(batch)
 
-            loss = self.calculate_losses(
-                (
-                    [image_output, *range_output]
-                    if exists(range_output)
-                    else [image_output]
-                ),
-                (
+            if exists(image_output) and exists(range_output):
+                loss = self.calculate_losses(
+                    [image_output, *range_output],
                     [
                         batch["displacement"],
                         batch["sign_displacement_range"],
                         batch["log_displacement_range"],
-                    ]
-                    if exists(range_output)
-                    else [batch["displacement"]]
-                ),
-            )
+                    ],
+                )
+            elif exists(image_output):
+                loss = self.calculate_losses(
+                    [image_output],
+                    [batch["displacement"]],
+                )
+            elif exists(range_output):
+                loss = self.calculate_losses(
+                    [*range_output],
+                    [
+                        batch["sign_displacement_range"],
+                        batch["log_displacement_range"],
+                    ],
+                )
             images = []
             ranges = []
-            for batch_index in range(image_output.shape[0]):
+
+            num_batches = image_output.shape[0] if exists(image_output) else 0
+            num_batches = (
+                range_output[0].shape[0] if exists(range_output) else num_batches
+            )
+
+            for batch_index in range(num_batches):
                 if exists(range_output):
                     ranges.append(
                         self.create_view_friendly_range(
@@ -816,13 +874,18 @@ class Trainer:
                         )
                     )
 
-                for channel_index in range(image_output.shape[1]):
-                    images.append(
-                        self.create_view_friendly_image(
-                            image_output[batch_index][channel_index]
+                if exists(image_output):
+                    for channel_index in range(image_output.shape[1]):
+                        images.append(
+                            self.create_view_friendly_image(
+                                image_output[batch_index][channel_index]
+                            )
                         )
-                    )
-            return images, ranges if len(ranges) > 0 else None, loss
+            return (
+                images if len(images) > 0 else None,
+                ranges if len(ranges) > 0 else None,
+                loss,
+            )
 
     def sample_and_save(
         self,
@@ -848,7 +911,7 @@ class Trainer:
         for batch_index, batch in sample_dataloader_with_pb:
             images, ranges, loss = self.sample(batch)
 
-            if ranges is not None:
+            if exists(ranges):
                 all_ranges.append(ranges)
 
             total_sample_loss += loss
@@ -857,19 +920,25 @@ class Trainer:
             if not save:
                 continue
 
-            batch_outputs = (
-                enumerate(zip(images, ranges)) if exists(ranges) else enumerate(images)
-            )
+            if exists(images) and exists(ranges):
+                batch_outputs = enumerate(zip(images, ranges))
+            elif exists(images):
+                batch_outputs = enumerate(images)
+            elif exists(ranges):
+                batch_outputs = enumerate(ranges)
 
             if progress_bar:
                 batch_outputs = tqdm(batch_outputs, desc="Saving batch")
 
             for batch_output_index, output in batch_outputs:
-                if exists(ranges):
+                image, range = None, None
+                if exists(images) and exists(ranges):
                     image, range = output
-                else:
+                elif exists(images):
                     image = output
-                    range = None
+                elif exists(ranges):
+                    range = output
+
                 axis = "x" if batch_output_index % 2 == 0 else "y"
 
                 index = (batch_output_index // 2) + (
@@ -891,14 +960,15 @@ class Trainer:
 
                 pathname.mkdir(parents=True, exist_ok=True)
 
-                plt.imsave(
-                    str(pathname / f"sample_{axis}_{step}.png"),
-                    torch.squeeze(image).clone().detach().cpu().numpy(),
-                    cmap="Greys",
-                    vmin=0,
-                    vmax=255,
-                )
-                image_filenames.append(str(pathname / f"sample_{axis}_{step}.png"))
+                if exists(image):
+                    plt.imsave(
+                        str(pathname / f"sample_{axis}_{step}.png"),
+                        torch.squeeze(image).clone().detach().cpu().numpy(),
+                        cmap="Greys",
+                        vmin=0,
+                        vmax=255,
+                    )
+                    image_filenames.append(str(pathname / f"sample_{axis}_{step}.png"))
 
                 if exists(range):
                     np.savetxt(
@@ -909,9 +979,8 @@ class Trainer:
         if num_batches != 0:
             total_sample_loss /= num_batches
 
-        image_filenames = None if not save else image_filenames
         return (
-            image_filenames,
+            image_filenames if (len(image_filenames) > 0 and save) else None,
             all_ranges if len(all_ranges) > 0 else None,
             total_sample_loss,
         )
@@ -940,22 +1009,28 @@ class Trainer:
                     batch: dict = next(self.train_yielder)
 
                     image_output, range_output = self.sample_model(batch)
-                    loss = self.calculate_losses(
-                        (
-                            [image_output, *range_output]
-                            if exists(range_output)
-                            else [image_output]
-                        ),
-                        (
+                    if exists(image_output) and exists(range_output):
+                        loss = self.calculate_losses(
+                            [image_output, *range_output],
                             [
                                 batch["displacement"],
                                 batch["sign_displacement_range"],
                                 batch["log_displacement_range"],
-                            ]
-                            if exists(range_output)
-                            else [batch["displacement"]]
-                        ),
-                    )
+                            ],
+                        )
+                    elif exists(image_output):
+                        loss = self.calculate_losses(
+                            [image_output],
+                            [batch["displacement"]],
+                        )
+                    elif exists(range_output):
+                        loss = self.calculate_losses(
+                            [*range_output],
+                            [
+                                batch["sign_displacement_range"],
+                                batch["log_displacement_range"],
+                            ],
+                        )
                     loss = loss / self.num_gradient_accumulation_steps
 
                     total_loss += loss.item()
@@ -969,11 +1044,34 @@ class Trainer:
 
                 self.accelerator.wait_for_everyone()
                 self.accelerator.clip_grad_norm_(
-                    self.model.parameters(), self.max_gradient_norm
+                    self.encoder.parameters(), self.max_gradient_norm
                 )  # Gradient clipping
 
-                self.optimizer.step()
-                self.optimizer.zero_grad()
+                if not self.only_auxiliary:
+                    self.accelerator.clip_grad_norm_(
+                        self.decoder.parameters(), self.max_gradient_norm
+                    )
+
+                if not self.disable_auxiliary:
+                    self.accelerator.clip_grad_norm_(
+                        self.auxiliary.parameters(), self.max_gradient_norm
+                    )
+
+                self.encoder_optimizer.step()
+
+                if not self.only_auxiliary:
+                    self.decoder_optimizer.step()
+
+                if not self.disable_auxiliary:
+                    self.auxiliary_optimizer.step()
+
+                self.encoder_optimizer.zero_grad()
+
+                if not self.only_auxiliary:
+                    self.decoder_optimizer.zero_grad()
+
+                if not self.disable_auxiliary:
+                    self.auxiliary_optimizer.zero_grad()
 
                 self.accelerator.wait_for_everyone()
 

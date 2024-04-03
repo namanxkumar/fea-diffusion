@@ -9,7 +9,7 @@ from model.diffusion import Trainer
 
 # from model.unet import UNet
 # from model.fdnunet import FDNUNet
-from model.fdnunetwithaux import FDNUNetWithAux
+from model.fdnunetwithaux import create_models
 
 parser = argparse.ArgumentParser(description="Train model.")
 
@@ -128,7 +128,7 @@ def inject_function(
 #     num_stages=4,
 # )
 
-model = FDNUNetWithAux(
+encoder, decoder, auxiliary = create_models(
     input_dim=64,
     image_height=args.image_size,
     image_width=args.image_size,
@@ -138,8 +138,22 @@ model = FDNUNetWithAux(
     num_stages=4,
 )
 
+# model = FDNUNetWithAux(
+#     input_dim=64,
+#     image_height=args.image_size,
+#     image_width=args.image_size,
+#     num_channels=2,  # materials (2)
+#     # num_condition_channels=1, # geometry (1)
+#     num_auxiliary_condition_channels=3,  # constraints (1) + force (2)
+#     num_stages=4,
+# )
+
 trainer = Trainer(
-    model=model,
+    encoder=encoder,
+    decoder=decoder,
+    auxiliary=auxiliary,
+    disable_auxiliary=True,  # I have disabled range prediction for now as discussed
+    only_auxiliary=False,  # This disables the image output and only trains the range predictor (as well as the encoder currently, we can discuss this later)
     dataset_folder=args.data_dir,
     sample_dataset_folder=args.sample_data_dir,
     num_steps_per_condition=args.num_steps_per_condition,
