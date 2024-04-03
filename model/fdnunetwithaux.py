@@ -1,16 +1,10 @@
-from .attentionutils import Attend
+from functools import partial
+from typing import List, Optional
 
 import torch
-from torch import nn, Tensor
-import torch.nn.functional as F
-
-from functools import partial
-import math
-
+from einops import rearrange
 from einops.layers.torch import Rearrange
-from einops import repeat, rearrange
-
-from typing import Optional, cast, List, Tuple
+from torch import Tensor, nn
 
 
 def exists(value):
@@ -523,6 +517,7 @@ class FDNUNetWithAux(nn.Module):
         num_auxiliary_condition_channels: int = 3,
         num_condition_channels: Optional[int] = None,
         resnet_num_groups_for_normalization: int = 8,
+        disable_auxiliary=False,
         # positional_embedding_theta: int = 10000,
         # attention_head_dim: int = 32,
         # num_attention_heads: int = 4,
@@ -695,14 +690,16 @@ class FDNUNetWithAux(nn.Module):
         self.final_dim = final_dim if exists(final_dim) else num_channels
 
         # Define Auxiliary Range Predictor
-        self.auxiliary_range_predictor = AuxiliaryRangePredictor(
-            input_dim=middle_dim,
-            middle_height=image_height // (2 ** (num_stages - 1)),
-            middle_width=image_width // (2 ** (num_stages - 1)),
-            output_dim=self.final_dim * 2,
-            hidden_dim=range_prediction_hidden_dim,
-            num_layers=range_prediction_num_layers,
-        )
+        self.disable_auxiliary = disable_auxiliary
+        if not self.disable_auxiliary:
+            self.auxiliary_range_predictor = AuxiliaryRangePredictor(
+                input_dim=middle_dim,
+                middle_height=image_height // (2 ** (num_stages - 1)),
+                middle_width=image_width // (2 ** (num_stages - 1)),
+                output_dim=self.final_dim * 2,
+                hidden_dim=range_prediction_hidden_dim,
+                num_layers=range_prediction_num_layers,
+            )
 
         self.final_resnet_block = resnet_module_without_fdn(input_dim * 2, input_dim)
         self.final_convolution = nn.Conv2d(input_dim, self.final_dim, 1)
@@ -764,7 +761,10 @@ class FDNUNetWithAux(nn.Module):
         # x = self.middle_attention(x) + x
         x = self.middle_block_2(x, auxiliary_condition_features[-1])
         # x = self.middle_block_2(x, auxiliary_condition_features[-1], time_embedding = time_embedding)
-        auxiliary_range_tuple = self.auxiliary_range_predictor(x)
+        if not self.disable_auxiliary:
+            auxiliary_range_tuple = self.auxiliary_range_predictor(x)
+        else:
+            auxiliary_range_tuple = None
         # # Take the negative of even indices to get the range
         # auxiliary_range[..., [0, 2]] = -auxiliary_range[..., [0, 2]]
 
