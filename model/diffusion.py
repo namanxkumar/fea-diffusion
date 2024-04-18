@@ -919,14 +919,14 @@ class Trainer:
 
             if not save:
                 continue
-
+            images = zip(images[::2], images[1::2])
             if exists(images) and exists(ranges):
                 batch_outputs = enumerate(zip(images, ranges))
             elif exists(images):
                 batch_outputs = enumerate(images)
             elif exists(ranges):
                 batch_outputs = enumerate(ranges)
-
+            
             if progress_bar:
                 batch_outputs = tqdm(batch_outputs, desc="Saving batch")
 
@@ -938,15 +938,14 @@ class Trainer:
                     image = output
                 elif exists(ranges):
                     range = output
-
-                axis = "x" if batch_output_index % 2 == 0 else "y"
-
-                index = (batch_output_index // 2) + (
+                
+                index = (batch_output_index) + (
                     batch_index * self.sample_batch_size
                 )
                 plate = (index // (num_conditions * num_steps)) + 1
                 condition = (index % (num_conditions * num_steps)) // num_steps + 1
                 step = (index % (num_conditions * num_steps)) % num_steps + 1
+                
 
                 if exists(milestone):
                     pathname = (
@@ -961,18 +960,20 @@ class Trainer:
                 pathname.mkdir(parents=True, exist_ok=True)
 
                 if exists(image):
-                    plt.imsave(
-                        str(pathname / f"sample_{axis}_{step}.png"),
-                        torch.squeeze(image).clone().detach().cpu().numpy(),
-                        cmap="Greys",
-                        vmin=0,
-                        vmax=255,
-                    )
-                    image_filenames.append(str(pathname / f"sample_{axis}_{step}.png"))
+                    for index, axis in enumerate(image):
+                        x_or_y = "x" if index == 0 else "y"
+                        plt.imsave(
+                            str(pathname / f"sample_{x_or_y}_{step}.png"),
+                            torch.squeeze(axis).clone().detach().cpu().numpy(),
+                            cmap="Greys",
+                            vmin=0,
+                            vmax=255,
+                        )
+                        image_filenames.append(str(pathname / f"sample_{x_or_y}_{step}.png"))
 
                 if exists(range):
                     np.savetxt(
-                        str(pathname / f"sample_{axis}_{step}.txt"),
+                        str(pathname / f"sample_{step}.txt"),
                         range.clone().detach().cpu().numpy(),
                     )
 
