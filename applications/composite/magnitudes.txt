@@ -1,0 +1,4 @@
+VertexForce0:(0, -200)
+VertexForce1:(0, -200)
+VertexForce2:(0, -200)
+VertexForce3:(0, -200)
