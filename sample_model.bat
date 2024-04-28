@@ -1,0 +1,10 @@
+python sample_model.py ^
+--data_dir data/testdata ^
+--sample_data_dir data/testdata ^
+--num_sample_conditions_per_plate 1 ^
+--num_steps_per_sample_condition 2 ^
+--results_dir results ^
+--image_size 256 ^
+--batch_size 10 ^
+--checkpoint latest-prev ^
+--milestone donkey256prev ^

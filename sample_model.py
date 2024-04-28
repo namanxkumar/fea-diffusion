@@ -1,6 +1,6 @@
 from model.diffusion import Trainer
 from model.unet import UNet
-from model.fdnunet import FDNUNet
+from model.fdnunetwithaux import create_models
 
 import argparse
 
@@ -57,16 +57,29 @@ args = parser.parse_args()
 #     num_condition_channels=4,  # constraints (1) + force (2) + geometry (1)
 # )
 
-model = FDNUNet(
+# model = FDNUNetWithAux(
+#     input_dim=64,
+#     num_channels=2,
+#     image_height=args.image_size,
+#     image_width=args.image_size,  # geometry/displacement (2)
+#     # num_condition_channels=1, # geometry (1)
+#     num_auxiliary_condition_channels=3,  # constraints (1) + force (2)
+#     num_stages=4,
+# )
+encoder, decoder, auxiliary = create_models(
     input_dim=64,
-    num_channels=2,  # geometry/displacement (2)
+    image_height=args.image_size,
+    image_width=args.image_size,
+    num_channels=2,  # materials (2)
     # num_condition_channels=1, # geometry (1)
     num_auxiliary_condition_channels=3,  # constraints (1) + force (2)
     num_stages=4,
 )
 
 trainer = Trainer(
-    model=model,
+    encoder=encoder,
+    decoder=decoder,
+    auxiliary=auxiliary,
     dataset_folder=args.data_dir,
     sample_dataset_folder=args.sample_data_dir,
     num_sample_conditions_per_plate=args.num_sample_conditions_per_plate,
@@ -82,4 +95,4 @@ trainer.load_checkpoint(args.checkpoint)
 # if args.successive_sampling:
 #     trainer.successive_sample_and_save(milestone = args.milestone, use_ema_model=args.use_ema_model)
 # else:
-trainer.sample_and_save(milestone=args.milestone, progress_bar=True)
+trainer.sample_and_save(milestone=args.milestone, progress_bar=False)
